@@ -17,11 +17,15 @@ const ZXING_OPTIONS = {
   textMode: 'Plain',
 };
 
-// Unsharp mask applied when a frame yields nothing. Recovers out-of-focus
-// codes: on a synthetic blur benchmark, plain + sharpened decoding read 44/48
-// blurred codes versus 39/48 for plain decoding alone.
+// Unsharp mask for a second decoding pass. Recovers out-of-focus codes: on a
+// synthetic blur benchmark, plain + sharpened decoding read 44/48 blurred codes
+// versus 39/48 for plain decoding alone. It runs whenever a frame yields
+// nothing, and every SHARPEN_EVERY frames regardless, so a blurry code next to
+// a sharp one is still found when several codes are in view.
 const SHARPEN_RADIUS = 3;
 const SHARPEN_AMOUNT = 3;
+const SHARPEN_EVERY = 3;
+let frameCount = 0;
 
 let lum = new Uint8Array(0);
 let rowSums = new Uint32Array(0);
@@ -80,9 +84,14 @@ async function loadZXing() {
       .map((r) => ({ text: r.text || '', bytes: new Uint8Array(r.bytes), quad: quadOf(r.position) }));
   return async (data, width, height) => {
     const codes = await read(data, width, height);
-    if (codes.length > 0) return codes;
+    frameCount += 1;
+    if (codes.length > 0 && frameCount % SHARPEN_EVERY !== 0) return codes;
     sharpen(data, width, height); // readBarcodes has already copied the pixels
-    return read(data, width, height);
+    const seen = new Set(codes.map((c) => c.text + '\u0000' + c.bytes.join(',')));
+    for (const code of await read(data, width, height)) {
+      if (!seen.has(code.text + '\u0000' + code.bytes.join(','))) codes.push(code);
+    }
+    return codes;
   };
 }
 

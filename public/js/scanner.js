@@ -8,7 +8,9 @@
 // preview element, so overlays can be positioned with percentages.
 
 const FRAME_INTERVAL_MS = 60; // at most ~16 decodes per second
-const MAX_SIDE = { zxing: 960, jsqr: 720 }; // decode resolution cap (px) per engine
+// Decode resolution cap (px) per engine. Small codes (e.g. thumbnails next to a
+// big one) need the extra pixels: 1440 px found 4/4 codes where 960 px found 2/4.
+const MAX_SIDE = { zxing: 1440, jsqr: 720 };
 const MARGIN = 0.12; // scan a little beyond the drawn viewfinder
 
 function errorCode(err) {
@@ -96,9 +98,9 @@ export class Scanner {
     if (!navigator.mediaDevices?.getUserMedia) return this.#emit('error', { error: 'unsupported' });
     this.#emit('starting');
 
-    // 1080p gives small or distant codes enough pixels; only the viewfinder
-    // region is ever decoded, so the cost stays bounded.
-    const video = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
+    // 1440p gives small or distant codes enough pixels (devices without it fall
+    // back to their nearest mode); only the viewfinder region is ever decoded.
+    const video = { width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30 } };
     if (deviceId) video.deviceId = { exact: deviceId };
     else video.facingMode = { ideal: 'environment' };
 
