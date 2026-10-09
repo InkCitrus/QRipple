@@ -41,7 +41,7 @@ camera → Web Worker(ZXing) 解码 ──► 内存中的临时会话 ──Web
 
 ## 本地开发
 
-需要 Node.js ≥ 20。
+需要 Node.js ≥ 22。
 
 ```bash
 npm install
