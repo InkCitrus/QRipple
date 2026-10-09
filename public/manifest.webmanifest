@@ -1,0 +1,10 @@
+{
+  "name": "QRipple",
+  "short_name": "QRipple",
+  "description": "Real-time QR code sharing. Scan once. Share everywhere.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0f766e",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

@@ -1,0 +1,41 @@
+[Unit]
+Description=QRipple real-time QR code sharing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=qripple
+Group=qripple
+WorkingDirectory=/opt/qripple/app
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+# Caddy in front appends the client address to X-Forwarded-For.
+Environment=TRUST_PROXY=1
+ExecStart=/opt/qripple/node/bin/node server/index.js
+Restart=always
+RestartSec=2
+
+# Sandboxing: the app only needs to read its own files and open sockets.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

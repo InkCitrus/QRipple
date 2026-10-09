@@ -1,0 +1,7 @@
+# QRipple: TLS termination in front of the Node server on 127.0.0.1:3000.
+# Caddy obtains and renews the Let's Encrypt certificate automatically and
+# redirects plain HTTP (port 80) to HTTPS (port 443).
+
+qripple.inkorange.com {
+	reverse_proxy 127.0.0.1:3000
+}

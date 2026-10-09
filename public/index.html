@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="description" content="QRipple — 实时二维码共享。Scan once. Share everywhere.">
+  <title>QRipple</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/css/app.css">
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" data-link>
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="9" y="9" width="14" height="14" rx="3" class="mark-core"/>
+        <rect x="12.5" y="12.5" width="3" height="3" class="mark-dot"/>
+        <rect x="16.5" y="16.5" width="3" height="3" class="mark-dot"/>
+        <path d="M5 11a11 11 0 0 1 6-6M27 21a11 11 0 0 1-6 6M21 5a11 11 0 0 1 6 6M11 27a11 11 0 0 1-6-6" class="mark-ripple"/>
+      </svg>
+      <span>QRipple</span>
+    </a>
+    <button type="button" class="lang-toggle" id="lang-toggle" aria-label="Switch language">EN</button>
+  </header>
+
+  <main id="app">
+    <!-- Home -->
+    <section class="view" data-view="home" hidden>
+      <div class="hero">
+        <h1 class="hero-title">QRipple</h1>
+        <p class="hero-tagline">Scan once. Share everywhere.</p>
+        <p class="hero-desc" data-i18n="home.desc"></p>
+      </div>
+      <div class="choices">
+        <a class="choice choice-share" href="/share" data-link>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M4 12h16"/></svg>
+          <span class="choice-title">Start Sharing</span>
+          <span class="choice-sub" data-i18n="home.shareSub"></span>
+        </a>
+        <a class="choice choice-join" href="/join" data-link>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/></svg>
+          <span class="choice-title">Join Session</span>
+          <span class="choice-sub" data-i18n="home.joinSub"></span>
+        </a>
+      </div>
+      <ul class="facts">
+        <li data-i18n="home.fact1"></li>
+        <li data-i18n="home.fact2"></li>
+        <li data-i18n="home.fact3"></li>
+      </ul>
+    </section>
+
+    <!-- Share -->
+    <section class="view view-share" data-view="share" hidden>
+      <div class="share-grid" id="share-main">
+        <div class="card code-card">
+          <div class="card-label" data-i18n="share.codeLabel"></div>
+          <div class="pair-code" id="share-code" aria-live="polite">-----</div>
+          <div class="status-row">
+            <span class="chip" id="share-conn"></span>
+            <span class="chip chip-neutral" id="share-receivers"></span>
+            <span class="chip chip-neutral" id="share-timer" hidden></span>
+          </div>
+        </div>
+
+        <div class="card camera-card">
+          <div class="camera" id="camera">
+            <video id="camera-video" playsinline muted autoplay></video>
+            <div class="viewfinder" id="viewfinder" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div class="camera-message" id="camera-message" hidden>
+              <p id="camera-message-text"></p>
+              <button type="button" class="btn btn-small" id="camera-retry" data-i18n="share.retryCamera"></button>
+            </div>
+            <div class="camera-bar">
+              <span class="scan-pill" id="scan-status" aria-live="polite"></span>
+              <button type="button" class="icon-btn" id="camera-switch" hidden data-i18n-attr="aria-label:share.switchCamera">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><path d="M9 13a3 3 0 0 0 5.5 1.5M15 12a3 3 0 0 0-5.5-1.5M14.5 16v-1.5H16M9.5 8v1.5H8"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card content-card">
+          <div class="card-label" data-i18n="share.currentLabel"></div>
+          <p class="content-preview empty" id="share-content" data-i18n="share.noContent"></p>
+          <div class="content-meta" id="share-meta"></div>
+        </div>
+
+        <p class="notice" data-i18n="common.sensitiveWarning"></p>
+
+        <button type="button" class="btn btn-danger btn-block" id="share-end" data-i18n="share.end"></button>
+      </div>
+
+      <div class="card ended-card" id="share-ended" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>
+        <h2 id="share-ended-title"></h2>
+        <p id="share-ended-text"></p>
+        <a class="btn btn-primary" href="/share" data-link data-reset data-i18n="share.startNew"></a>
+        <a class="btn btn-ghost" href="/" data-link data-i18n="common.home"></a>
+      </div>
+    </section>
+
+    <!-- Join -->
+    <section class="view view-join" data-view="join" hidden>
+      <form class="card join-form" id="join-form" novalidate>
+        <label class="card-label" for="join-code" data-i18n="join.codeLabel"></label>
+        <input id="join-code" class="code-input" name="code" type="text" inputmode="numeric" pattern="[0-9]*"
+               maxlength="5" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="•••••" required>
+        <p class="form-error" id="join-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" id="join-submit" data-i18n="join.submit"></button>
+        <p class="hint" data-i18n="join.hint"></p>
+      </form>
+
+      <div class="join-session" id="join-session" hidden>
+        <div class="card session-bar">
+          <div>
+            <div class="card-label" data-i18n="join.sessionLabel"></div>
+            <div class="session-code" id="join-session-code"></div>
+          </div>
+          <div class="status-row">
+            <span class="chip" id="join-conn"></span>
+            <span class="chip chip-neutral" id="join-timer" hidden></span>
+          </div>
+        </div>
+
+        <div class="banner" id="join-banner" hidden></div>
+
+        <div class="card qr-card">
+          <div class="qr-frame" id="qr-frame">
+            <div class="qr-placeholder" id="qr-placeholder">
+              <div class="spinner" aria-hidden="true"></div>
+              <p data-i18n="join.waiting"></p>
+            </div>
+          </div>
+          <div class="qr-meta" id="qr-meta"></div>
+        </div>
+
+        <div class="card content-card" id="join-content-card" hidden>
+          <div class="card-label" data-i18n="join.contentLabel"></div>
+          <p class="content-preview" id="join-content"></p>
+          <button type="button" class="btn btn-secondary btn-block" id="join-copy" data-i18n="join.copy"></button>
+        </div>
+
+        <p class="notice" data-i18n="common.sensitiveWarning"></p>
+
+        <button type="button" class="btn btn-ghost btn-block" id="join-leave" data-i18n="join.leave"></button>
+      </div>
+
+      <div class="card ended-card" id="join-ended" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+        <h2 id="join-ended-title"></h2>
+        <p id="join-ended-text"></p>
+        <a class="btn btn-primary" href="/join" data-link data-reset data-i18n="join.joinAnother"></a>
+        <a class="btn btn-ghost" href="/" data-link data-i18n="common.home"></a>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <footer class="footer">
+    <span data-i18n="common.privacy"></span>
+  </footer>
+</body>
+</html>
