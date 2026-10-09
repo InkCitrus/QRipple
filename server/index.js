@@ -1,8 +1,9 @@
 import { createApp } from './app.js';
 
 const app = createApp();
-const address = await app.listen();
-console.log(`QRipple listening on http://${address.address}:${address.port}`);
+await app.listen();
+console.log(`QRipple listening on ${app.config.hosts.map((h) => `${h}:${app.config.port}`).join(', ')}`);
+if (app.config.lines.length) console.log(`Access lines: ${app.config.lines.join(', ')}`);
 
 let stopping = false;
 async function shutdown(signal) {

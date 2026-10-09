@@ -29,11 +29,11 @@ export function formatClock(timestamp) {
   });
 }
 
-/** Connection status -> chip text and tone. */
-export function connectionChip(el, status) {
+/** Connection status (and the access line in use) -> chip text and tone. */
+export function connectionChip(el, status, line = null) {
   const tone = { online: 'ok', connecting: 'warn', reconnecting: 'warn', offline: 'bad', closed: 'bad' }[status] || 'warn';
-  const key = status === 'closed' ? 'conn.offline' : `conn.${status}`;
-  setText(el, t(key));
+  if (status === 'online' && line) setText(el, t('conn.onlineVia', { line: line.toUpperCase() }));
+  else setText(el, t(status === 'closed' ? 'conn.offline' : `conn.${status}`));
   el.dataset.tone = tone;
 }
 

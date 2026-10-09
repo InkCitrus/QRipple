@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Ship the current checkout to the server and restart the service.
-#   deploy/deploy.sh [ssh-host]      (default: vps-sh)
+# Ship the current checkout to the servers and restart the service.
+#   deploy/deploy.sh [ssh-host ...]      (default: vps-azure vps-tk)
 set -euo pipefail
 
-HOST="${1:-vps-sh}"
 cd "$(dirname "$0")/.."
+HOSTS=("$@")
+[ ${#HOSTS[@]} -gt 0 ] || HOSTS=(vps-azure vps-tk)
 
 npm test
+
+for HOST in "${HOSTS[@]}"; do
+echo "==> $HOST"
 
 rsync -az --delete \
   --include 'server/***' --include 'public/***' \
@@ -34,3 +38,4 @@ echo "qripple failed to start" >&2
 journalctl -u qripple -n 30 --no-pager >&2
 exit 1
 REMOTE
+done

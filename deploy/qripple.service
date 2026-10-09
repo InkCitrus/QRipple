@@ -1,7 +1,9 @@
 [Unit]
 Description=QRipple real-time QR code sharing
-After=network-online.target
+After=network-online.target tailscaled.service
 Wants=network-online.target
+# Keep retrying: at boot a Tailscale listen address may not exist yet.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -11,8 +13,10 @@ WorkingDirectory=/opt/qripple/app
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=3000
-# Caddy in front appends the client address to X-Forwarded-For.
+# The reverse proxy in front appends the client address to X-Forwarded-For.
 Environment=TRUST_PROXY=1
+# Per-node settings (listen addresses, access lines, ...) override the above.
+EnvironmentFile=-/etc/qripple/qripple.env
 ExecStart=/opt/qripple/node/bin/node server/index.js
 Restart=always
 RestartSec=2

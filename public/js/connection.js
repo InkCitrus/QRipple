@@ -1,9 +1,71 @@
-// WebSocket wrapper with automatic reconnection and a liveness check.
-// Status values: 'connecting' | 'online' | 'reconnecting' | 'offline' | 'closed'.
+// WebSocket wrapper with multi-line racing, automatic reconnection and a
+// liveness check. Status values: 'connecting' | 'online' | 'reconnecting' |
+// 'offline' | 'closed'.
+//
+// Multi-line access: the server lists several hostnames ("lines") that reach
+// the same backend over different networks (/lines.json). Each connection
+// attempt starts with the line that worked last; if it hasn't connected
+// within HEDGE_MS the next line is tried in parallel, and the first socket to
+// open wins. A line that just dropped is tried last on the next attempt.
 
-const BACKOFF_MS = [500, 1000, 2000, 4000, 8000, 15000];
-const PING_AFTER_MS = 15000; // send a ping when the line has been quiet this long
-const DEAD_AFTER_MS = 35000; // no traffic at all for this long: assume the socket is dead
+const BACKOFF_MS = [250, 1000, 2000, 4000, 8000, 15000];
+const HEDGE_MS = 600; // start the next line if the current one hasn't opened yet
+const ATTEMPT_TIMEOUT_MS = 8000; // give up on a round of attempts after this
+const PING_AFTER_MS = 10000; // send a ping when the connection has been quiet this long
+const DEAD_AFTER_MS = 25000; // no traffic at all for this long: assume the socket is dead
+const PREFERRED_KEY = 'qripple.line';
+
+const sameOrigin = { id: null, url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws` };
+
+const validLines = (list) => (Array.isArray(list) ? list.filter((l) => l && typeof l.url === 'string') : []);
+
+// The server embeds the lines in the page, so they are known immediately.
+// /lines.json is only a fallback for pages served without them.
+let lines = [];
+let linesReady = Promise.resolve();
+const embedded = document.querySelector('meta[name="qripple-lines"]')?.content;
+if (embedded) {
+  try {
+    lines = validLines(JSON.parse(embedded));
+  } catch {
+    lines = [];
+  }
+} else {
+  linesReady = Promise.race([
+    fetch('/lines.json', { cache: 'no-cache' })
+      .then((res) => (res.ok ? res.json() : { lines: [] }))
+      .then((data) => {
+        lines = validLines(data.lines);
+      })
+      .catch(() => {}),
+    new Promise((resolve) => setTimeout(resolve, 2000)),
+  ]);
+}
+
+function readPreferred() {
+  try {
+    return localStorage.getItem(PREFERRED_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writePreferred(id) {
+  try {
+    if (id) localStorage.setItem(PREFERRED_KEY, id);
+  } catch {
+    // storage unavailable: just no preference next time
+  }
+}
+
+function silence(ws) {
+  ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null;
+  try {
+    ws.close();
+  } catch {
+    // already closing
+  }
+}
 
 export class Connection {
   constructor({ onOpen, onMessage, onStatus }) {
@@ -11,6 +73,9 @@ export class Connection {
     this.onMessage = onMessage;
     this.onStatus = onStatus;
     this.ws = null;
+    this.line = null; // the line the open socket uses ({ id, url })
+    this.suspect = null; // id of a line that just failed; tried last next time
+    this.round = null; // the attempt in progress
     this.status = 'connecting';
     this.attempts = 0; // consecutive failed attempts
     this.everOpened = false;
@@ -18,22 +83,21 @@ export class Connection {
     this.retryTimer = null;
     this.lastTraffic = 0;
 
-    this.url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
     this.handleOnline = () => this.reconnectNow();
     this.handleOffline = () => this.#setStatus('offline');
     this.handleVisible = () => {
       if (document.visibilityState !== 'visible') return;
-      if (this.ws?.readyState === WebSocket.OPEN) this.send({ t: 'ping' });
+      if (this.open) this.send({ t: 'ping' });
       else this.reconnectNow();
     };
     window.addEventListener('online', this.handleOnline);
     window.addEventListener('offline', this.handleOffline);
     document.addEventListener('visibilitychange', this.handleVisible);
-    this.heartbeat = setInterval(() => this.#checkAlive(), 5000);
+    this.heartbeat = setInterval(() => this.#checkAlive(), 2500);
   }
 
   start() {
-    this.#connect();
+    linesReady.then(() => this.#connect());
     return this;
   }
 
@@ -56,6 +120,7 @@ export class Connection {
     window.removeEventListener('online', this.handleOnline);
     window.removeEventListener('offline', this.handleOffline);
     document.removeEventListener('visibilitychange', this.handleVisible);
+    this.#abortRound();
     const ws = this.ws;
     this.ws = null;
     if (ws) {
@@ -70,29 +135,89 @@ export class Connection {
   }
 
   reconnectNow() {
-    if (this.stopped || this.open || this.ws?.readyState === WebSocket.CONNECTING) return;
+    if (this.stopped || this.open || this.round) return;
     clearTimeout(this.retryTimer);
     this.#connect();
   }
 
+  /** Lines to try, best first. */
+  #candidates() {
+    const list = lines.length ? [...lines] : [];
+    // Same-origin last: a safety net if the line hostnames don't resolve.
+    if (!list.some((l) => new URL(l.url).host === location.host)) list.push(sameOrigin);
+    const preferred = readPreferred();
+    const rank = (l) => (l.id && l.id === this.suspect ? 2 : l.id && l.id === preferred ? 0 : 1);
+    return list.map((l, i) => ({ l, i })).sort((a, b) => rank(a.l) - rank(b.l) || a.i - b.i).map(({ l }) => l);
+  }
+
   #connect() {
-    if (this.stopped) return;
+    if (this.stopped || this.open || this.round) return;
     this.#setStatus(this.everOpened || this.attempts > 0 ? 'reconnecting' : 'connecting');
-    let ws;
-    try {
-      ws = new WebSocket(this.url);
-    } catch {
-      this.#scheduleRetry();
-      return;
-    }
-    this.ws = ws;
-    ws.onopen = () => {
-      this.attempts = 0;
-      this.everOpened = true;
-      this.lastTraffic = Date.now();
-      this.#setStatus('online');
-      this.onOpen?.();
+    const list = this.#candidates();
+    const round = { done: false, sockets: new Set(), started: 0, failed: 0, hedge: null, timeout: null };
+    this.round = round;
+
+    const end = () => {
+      round.done = true;
+      clearTimeout(round.hedge);
+      clearTimeout(round.timeout);
+      if (this.round === round) this.round = null;
     };
+    const fail = () => {
+      if (round.done) return;
+      round.failed += 1;
+      if (round.started < list.length) startNext();
+      else if (round.failed >= list.length) {
+        end();
+        this.#scheduleRetry();
+      }
+    };
+    const startNext = () => {
+      if (round.done || round.started >= list.length) return;
+      const line = list[round.started++];
+      clearTimeout(round.hedge);
+      if (round.started < list.length) round.hedge = setTimeout(startNext, HEDGE_MS);
+      let ws;
+      try {
+        ws = new WebSocket(line.url);
+      } catch {
+        fail();
+        return;
+      }
+      round.sockets.add(ws);
+      ws.onopen = () => {
+        if (round.done || this.stopped) return silence(ws);
+        round.sockets.delete(ws);
+        for (const other of round.sockets) silence(other);
+        end();
+        this.#adopt(ws, line);
+      };
+      ws.onerror = () => {
+        // onclose follows
+      };
+      ws.onclose = () => {
+        round.sockets.delete(ws);
+        fail();
+      };
+    };
+
+    round.timeout = setTimeout(() => {
+      if (round.done) return;
+      for (const ws of round.sockets) silence(ws);
+      end();
+      this.#scheduleRetry();
+    }, ATTEMPT_TIMEOUT_MS);
+    startNext();
+  }
+
+  #adopt(ws, line) {
+    this.ws = ws;
+    this.line = line;
+    this.suspect = null;
+    writePreferred(line.id);
+    this.attempts = 0;
+    this.everOpened = true;
+    this.lastTraffic = Date.now();
     ws.onmessage = (event) => {
       this.lastTraffic = Date.now();
       let msg;
@@ -106,12 +231,28 @@ export class Connection {
     };
     ws.onclose = () => {
       if (this.ws !== ws) return;
-      this.ws = null;
-      this.#scheduleRetry();
+      this.#dropped();
     };
-    ws.onerror = () => {
-      // onclose follows and handles the retry
-    };
+    ws.onerror = () => {};
+    this.#setStatus('online');
+    this.onOpen?.();
+  }
+
+  /** The open connection was lost: retry soon, trying the other lines first. */
+  #dropped() {
+    this.suspect = this.line?.id ?? null;
+    this.ws = null;
+    this.#scheduleRetry();
+  }
+
+  #abortRound() {
+    const round = this.round;
+    if (!round) return;
+    for (const ws of round.sockets) silence(ws);
+    round.done = true;
+    clearTimeout(round.hedge);
+    clearTimeout(round.timeout);
+    this.round = null;
   }
 
   #scheduleRetry() {
@@ -128,16 +269,11 @@ export class Connection {
     if (!this.open) return;
     const quiet = Date.now() - this.lastTraffic;
     if (quiet > DEAD_AFTER_MS) {
-      // Half-open connection (common after a network switch): drop it.
+      // Half-open connection (common after a network switch or on a lossy
+      // line): drop it and reconnect, preferring another line.
       const ws = this.ws;
-      this.ws = null;
-      ws.onclose = ws.onerror = ws.onmessage = ws.onopen = null;
-      try {
-        ws.close();
-      } catch {
-        // ignore
-      }
-      this.#scheduleRetry();
+      silence(ws);
+      this.#dropped();
     } else if (quiet > PING_AFTER_MS) {
       this.send({ t: 'ping' });
     }

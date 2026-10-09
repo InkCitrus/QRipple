@@ -20,6 +20,7 @@ const messages = {
 
     'conn.connecting': '连接中…',
     'conn.online': '已连接',
+    'conn.onlineVia': '已连接 · 线路 {line}',
     'conn.reconnecting': '重新连接中…',
     'conn.offline': '网络已断开',
 
@@ -104,6 +105,7 @@ const messages = {
 
     'conn.connecting': 'Connecting…',
     'conn.online': 'Connected',
+    'conn.onlineVia': 'Connected · line {line}',
     'conn.reconnecting': 'Reconnecting…',
     'conn.offline': 'Offline',
 

@@ -38,6 +38,7 @@ export function mountJoin(root, { navigate }) {
     code: null,
     sid: null,
     conn: 'connecting',
+    line: null, // access line in use (see connection.js)
     hostOnline: true,
     payload: null, // { rev, data, text, bytes, receivedAt }
     endReason: null,
@@ -61,8 +62,9 @@ export function mountJoin(root, { navigate }) {
         if (state.sid) msg.sid = state.sid; // rejoin after a reconnect
         conn.send(msg);
       },
-      onStatus(status) {
+      onStatus(status, c) {
         state.conn = status;
+        state.line = c.line?.id ?? null;
         if (state.phase === 'joining' && status !== 'online' && conn.attempts >= 3) {
           fail('network');
           return;
@@ -191,7 +193,7 @@ export function mountJoin(root, { navigate }) {
     // Session
     if (phase === 'session') {
       setText(el.sessionCode, state.code);
-      connectionChip(el.conn, state.conn);
+      connectionChip(el.conn, state.conn, state.line);
       let banner = null;
       if (state.conn !== 'online') banner = 'join.reconnecting';
       else if (!state.hostOnline) banner = 'join.hostOffline';

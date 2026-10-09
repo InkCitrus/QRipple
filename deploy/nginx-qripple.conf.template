@@ -1,0 +1,69 @@
+# QRipple access line. Rendered by deploy/setup-line.sh; edit the template
+# in the repository rather than this file.
+#
+# Every line forwards to the same primary QRipple process (so a sharer and a
+# receiver on different lines meet in one session); the backup process only
+# takes over while the primary is unreachable.
+
+upstream qripple_app {
+    server __PRIMARY__ max_fails=2 fail_timeout=15s;
+    server __BACKUP__ backup;
+    keepalive 8;
+}
+
+map $http_upgrade $qripple_connection {
+    default upgrade;
+    ''      '';
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __NAMES__;
+
+    # ACME HTTP-01. The main name resolves to every line, so a challenge can
+    # reach the node that did not request it: serve local tokens, otherwise
+    # ask the peer once (the header stops the request bouncing back).
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/qripple-acme;
+        try_files $uri @qripple_acme_peer;
+    }
+    location @qripple_acme_peer {
+        if ($http_x_qripple_peer) {
+            return 404;
+        }
+        proxy_set_header Host $host;
+        proxy_set_header X-QRipple-Peer 1;
+        proxy_connect_timeout 3s;
+        proxy_pass http://__PEER__:80;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+#__HTTPS_BEGIN__
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name __NAMES__;
+
+    ssl_certificate /etc/letsencrypt/live/qripple/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/qripple/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    location / {
+        proxy_pass http://qripple_app;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $qripple_connection;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_next_upstream error timeout;
+    }
+}
+#__HTTPS_END__
