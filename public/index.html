@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QRipple - Real-time QR Sharing</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 860px; }
+      .row { display: grid; gap: 1rem; margin-bottom: 1.5rem; }
+      textarea { width: 100%; min-height: 100px; }
+      .muted { color: #666; font-size: 0.9rem; }
+      img { max-width: 280px; border: 1px solid #ddd; padding: 0.5rem; background: #fff; }
+      button { width: fit-content; }
+      .hidden { display: none; }
+      code { background: #f4f4f4; padding: 0.15rem 0.3rem; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>QRipple</h1>
+    <p>Real-time QR code sharing across devices.</p>
+
+    <div class="row">
+      <button id="create">Create Share Session</button>
+      <p id="sessionInfo" class="muted hidden"></p>
+    </div>
+
+    <div id="workspace" class="hidden">
+      <div class="row">
+        <label for="content">Share content</label>
+        <textarea id="content" placeholder="Enter URL or text"></textarea>
+        <button id="share">Share Update</button>
+      </div>
+
+      <div class="row">
+        <div>
+          <strong>Live QR:</strong>
+          <div><img id="qr" alt="Live QR Code" /></div>
+        </div>
+        <div class="muted">Last update: <span id="updatedAt">-</span></div>
+      </div>
+    </div>
+
+    <script>
+      const createButton = document.getElementById('create');
+      const shareButton = document.getElementById('share');
+      const sessionInfo = document.getElementById('sessionInfo');
+      const workspace = document.getElementById('workspace');
+      const contentInput = document.getElementById('content');
+      const qrImage = document.getElementById('qr');
+      const updatedAt = document.getElementById('updatedAt');
+
+      const state = { sessionId: null, stream: null };
+
+      function setSessionInfo(text) {
+        sessionInfo.textContent = text;
+        sessionInfo.classList.remove('hidden');
+      }
+
+      async function loadSession(sessionId) {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+        if (!response.ok) {
+          setSessionInfo('Session not found.');
+          return;
+        }
+
+        const data = await response.json();
+        state.sessionId = data.sessionId;
+        workspace.classList.remove('hidden');
+        contentInput.value = data.content;
+        qrImage.src = data.qrDataUrl;
+        updatedAt.textContent = new Date(data.updatedAt).toLocaleString();
+        setSessionInfo(`Session: ${data.sessionId} | Share link: ${data.shareUrl}`);
+
+        if (state.stream) state.stream.close();
+        state.stream = new EventSource(`/api/sessions/${encodeURIComponent(data.sessionId)}/stream`);
+        state.stream.onmessage = async () => {
+          const latest = await fetch(`/api/sessions/${encodeURIComponent(data.sessionId)}`);
+          if (!latest.ok) return;
+          const payload = await latest.json();
+          contentInput.value = payload.content;
+          qrImage.src = payload.qrDataUrl;
+          updatedAt.textContent = new Date(payload.updatedAt).toLocaleString();
+        };
+      }
+
+      createButton.addEventListener('click', async () => {
+        const response = await fetch('/api/sessions', { method: 'POST' });
+        const data = await response.json();
+        const url = new URL(window.location.href);
+        url.searchParams.set('session', data.sessionId);
+        window.history.replaceState({}, '', url);
+        await loadSession(data.sessionId);
+      });
+
+      shareButton.addEventListener('click', async () => {
+        if (!state.sessionId) return;
+        await fetch(`/api/sessions/${encodeURIComponent(state.sessionId)}/share`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: contentInput.value }),
+        });
+      });
+
+      const existingSession = new URL(window.location.href).searchParams.get('session');
+      if (existingSession) {
+        loadSession(existingSession);
+      }
+    </script>
+  </body>
+</html>

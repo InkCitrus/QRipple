@@ -1,0 +1,21 @@
+{
+  "name": "qripple",
+  "version": "1.0.0",
+  "description": "Scan once. Share everywhere.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://localhost:26831/InkCitrus/QRipple"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
