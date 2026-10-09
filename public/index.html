@@ -62,7 +62,6 @@
           <div class="status-row">
             <span class="chip" id="share-conn"></span>
             <span class="chip chip-neutral" id="share-receivers"></span>
-            <span class="chip chip-neutral" id="share-timer" hidden></span>
           </div>
         </div>
 
@@ -70,6 +69,9 @@
           <div class="camera" id="camera">
             <video id="camera-video" playsinline muted autoplay></video>
             <div class="viewfinder" id="viewfinder" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+            <div class="code-markers" id="code-markers" hidden>
+              <svg class="code-outlines" id="code-outlines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+            </div>
             <div class="camera-message" id="camera-message" hidden>
               <p id="camera-message-text"></p>
               <button type="button" class="btn btn-small" id="camera-retry" data-i18n="share.retryCamera"></button>
@@ -81,6 +83,10 @@
               </button>
             </div>
           </div>
+          <div class="code-choices" id="code-choices" hidden>
+            <p class="code-choices-title" data-i18n="share.chooseTitle"></p>
+            <div class="code-choices-list" id="code-choices-list"></div>
+          </div>
         </div>
 
         <div class="card content-card">
@@ -88,8 +94,6 @@
           <p class="content-preview empty" id="share-content" data-i18n="share.noContent"></p>
           <div class="content-meta" id="share-meta"></div>
         </div>
-
-        <p class="notice" data-i18n="common.sensitiveWarning"></p>
 
         <button type="button" class="btn btn-danger btn-block" id="share-end" data-i18n="share.end"></button>
       </div>
@@ -122,7 +126,6 @@
           </div>
           <div class="status-row">
             <span class="chip" id="join-conn"></span>
-            <span class="chip chip-neutral" id="join-timer" hidden></span>
           </div>
         </div>
 
@@ -143,8 +146,6 @@
           <p class="content-preview" id="join-content"></p>
           <button type="button" class="btn btn-secondary btn-block" id="join-copy" data-i18n="join.copy"></button>
         </div>
-
-        <p class="notice" data-i18n="common.sensitiveWarning"></p>
 
         <button type="button" class="btn btn-ghost btn-block" id="join-leave" data-i18n="join.leave"></button>
       </div>

@@ -5,7 +5,7 @@ import { t } from './i18n.js';
 import { Connection } from './connection.js';
 import { base64ToBytes, describe } from './payload.js';
 import { renderQrSvg } from './qr-render.js';
-import { $, setText, connectionChip, formatDuration, formatClock, copyText, createWakeLock, toast } from './ui.js';
+import { $, setText, connectionChip, formatClock, copyText, createWakeLock, toast } from './ui.js';
 
 const CODE_RE = /^\d{5}$/;
 const JOIN_ERRORS = new Set(['not_found', 'full', 'rate_limited', 'network']);
@@ -19,7 +19,6 @@ export function mountJoin(root, { navigate }) {
     session: $('#join-session', root),
     sessionCode: $('#join-session-code', root),
     conn: $('#join-conn', root),
-    timer: $('#join-timer', root),
     banner: $('#join-banner', root),
     qrFrame: $('#qr-frame', root),
     qrPlaceholder: $('#qr-placeholder', root),
@@ -38,7 +37,6 @@ export function mountJoin(root, { navigate }) {
     error: null,
     code: null,
     sid: null,
-    deadline: null,
     conn: 'connecting',
     hostOnline: true,
     payload: null, // { rev, data, text, bytes, receivedAt }
@@ -81,7 +79,6 @@ export function mountJoin(root, { navigate }) {
         state.phase = 'session';
         state.sid = msg.sid;
         state.code = msg.code;
-        state.deadline = Date.now() + msg.remainingMs;
         state.hostOnline = msg.hostOnline;
         if (msg.payload) showPayload(msg.payload);
         wakeLock.enable();
@@ -177,15 +174,6 @@ export function mountJoin(root, { navigate }) {
 
   // ------------------------------------------------------------ rendering
 
-  function renderTimer() {
-    if (state.phase !== 'session' || !state.deadline) {
-      el.timer.hidden = true;
-      return;
-    }
-    el.timer.hidden = false;
-    setText(el.timer, t('common.remaining', { time: formatDuration(state.deadline - Date.now()) }));
-  }
-
   function render() {
     const { phase } = state;
     el.form.hidden = phase !== 'form' && phase !== 'joining';
@@ -204,7 +192,6 @@ export function mountJoin(root, { navigate }) {
     if (phase === 'session') {
       setText(el.sessionCode, state.code);
       connectionChip(el.conn, state.conn);
-      renderTimer();
       let banner = null;
       if (state.conn !== 'online') banner = 'join.reconnecting';
       else if (!state.hostOnline) banner = 'join.hostOffline';
@@ -259,7 +246,6 @@ export function mountJoin(root, { navigate }) {
     navigate('/');
   }
 
-  const ticker = setInterval(renderTimer, 1000);
   const onLang = () => render();
   el.form.addEventListener('submit', onSubmit);
   el.input.addEventListener('input', onInput);
@@ -276,7 +262,6 @@ export function mountJoin(root, { navigate }) {
     canLeave: () => true,
     unmount() {
       leave();
-      clearInterval(ticker);
       clearTimeout(retryTimer);
       el.form.removeEventListener('submit', onSubmit);
       el.input.removeEventListener('input', onInput);

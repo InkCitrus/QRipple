@@ -20,7 +20,10 @@ export function loadConfig(env = process.env) {
     host: env.HOST || '0.0.0.0',
 
     // Sessions
-    sessionTtlMs: int(env, 'SESSION_TTL_MS', 2 * 60 * 60 * 1000), // hard lifetime
+    // Sessions normally end when the sharer ends them or stays offline past
+    // hostGraceMs. This hidden cap only stops a sharer page left open forever
+    // from keeping a session (and its code) alive indefinitely.
+    sessionTtlMs: int(env, 'SESSION_TTL_MS', 24 * 60 * 60 * 1000),
     hostGraceMs: int(env, 'HOST_GRACE_MS', 2 * 60 * 1000), // sharer offline -> session ends
     codeCooldownMs: int(env, 'CODE_COOLDOWN_MS', 10 * 60 * 1000), // ended codes are not reused for this long
     maxSessions: int(env, 'MAX_SESSIONS', 2000),

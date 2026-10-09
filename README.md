@@ -14,7 +14,8 @@ camera → Web Worker(ZXing) 解码 ──► 内存中的临时会话 ──Web
           （图像不出设备）           只保存最新一条数据                  SVG 二维码
 ```
 
-- **分享端**：摄像头帧（1080p）裁剪到取景框，在 Web Worker 中用 [zxing-wasm](https://github.com/Sec-ant/zxing-wasm)（zxing-cpp 的 WebAssembly 版）解码，最高约 16 帧/秒；不支持 WebAssembly 的浏览器自动退回 [jsQR](https://github.com/cozmo/jsQR)。首个二维码识别一次即推送；内容变化需连续识别 2 次才替换，防止两个码同时入镜或误识别导致闪烁；内容未变化不重复发送。识别不到时保留上一次结果，扫描永不停止。
+- **分享端**：摄像头帧（1080p）裁剪到取景框，在 Web Worker 中用 [zxing-wasm](https://github.com/Sec-ant/zxing-wasm)（zxing-cpp 的 WebAssembly 版）解码，最高约 16 帧/秒；一帧识别失败时会做一次锐化（反锐化掩模）再识别，提升对失焦模糊的识别率；不支持 WebAssembly 的浏览器自动退回 [jsQR](https://github.com/cozmo/jsQR)。首个二维码识别一次即推送；内容变化需连续识别 2 次才替换，防止误识别导致闪烁；内容未变化不重复发送。识别不到时保留上一次结果，扫描永不停止。
+- **多个二维码**：画面中同时出现多个二维码时不会自动切换，而是在预览上标出编号并列出内容，由分享者点选；之后会持续跟随所选的码（包括原位刷新内容的动态码）。逻辑见 `public/js/code-tracker.js`。
 - **服务器**：单进程 Node.js（依赖仅 `ws`），会话完全存在内存中，不落盘、不记录内容。
 - **接收端**：按原始字节（base64 传输）用 [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 重新编码；纯数字 / 字母数字内容自动使用更紧凑的编码模式。外观可能不同，但承载的数据相同。
 
@@ -23,8 +24,8 @@ camera → Web Worker(ZXing) 解码 ──► 内存中的临时会话 ──Web
 | 项目 | 默认值 | 环境变量 |
 | --- | --- | --- |
 | 配对码 | 五位数字 10000–99999，结束后 10 分钟内不复用 | `CODE_COOLDOWN_MS` |
-| 会话最长有效期 | 2 小时 | `SESSION_TTL_MS` |
-| 分享者离线宽限期 | 2 分钟（超时后会话关闭） | `HOST_GRACE_MS` |
+| 分享者离线自动关闭 | 离线超过 2 分钟（关闭页面、断网、锁屏过久）会话自动结束 | `HOST_GRACE_MS` |
+| 会话安全上限 | 24 小时（不在界面显示，防止页面一直开着导致会话永不结束） | `SESSION_TTL_MS` |
 | 每个会话接收者上限 | 50 | `MAX_RECEIVERS` |
 | 最大数据量 | 8 KiB（可覆盖任何合法二维码） | `MAX_DATA_BYTES` |
 
@@ -35,7 +36,7 @@ camera → Web Worker(ZXing) 解码 ──► 内存中的临时会话 ──Web
 - 只有持有分享令牌（创建会话时下发的 192 位随机值）的连接才能更新或结束会话。
 - 按 IP 限制：错误配对码 10 次后限速（每 30 秒恢复 1 次）、创建会话频率、并发连接数；按连接限制消息速率；超大消息直接断开。
 - WebSocket 校验 Origin；页面启用严格 CSP、`Permissions-Policy`、`X-Frame-Options` 等安全响应头。
-- 五位配对码不是强认证，界面会提示用户不要分享付款码、登录码等敏感二维码。
+- 五位配对码不是强认证：错误猜测会被限流，但任何知道配对码的人都能看到分享内容。
 
 完整的消息格式见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
 

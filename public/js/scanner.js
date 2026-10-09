@@ -2,7 +2,10 @@
 // viewfinder, decoded in a Web Worker, and never leave the device.
 //
 // onState({ state: 'starting' | 'running' | 'paused' | 'error', error?, canSwitch?, mirrored? })
-// onResult({ text, bytes } | null) once per decoded frame.
+// onResult(codes) once per decoded frame, where codes is an array (empty when
+// nothing was found) of { text, bytes, quad, center }. quad holds the four
+// corners and center the middle of the code, both as [x, y] fractions of the
+// preview element, so overlays can be positioned with percentages.
 
 const FRAME_INTERVAL_MS = 60; // at most ~16 decodes per second
 const MAX_SIDE = { zxing: 960, jsqr: 720 }; // decode resolution cap (px) per engine
@@ -214,7 +217,8 @@ export class Scanner {
       this.#schedule(100);
       return;
     }
-    const crop = this.#cropRect();
+    const view = this.#viewLayout();
+    const crop = this.#cropRect(view);
     const scale = Math.min(1, MAX_SIDE[this.engine] / Math.max(crop.w, crop.h));
     const w = Math.max(1, Math.round(crop.w * scale));
     const h = Math.max(1, Math.round(crop.h * scale));
@@ -224,28 +228,56 @@ export class Scanner {
     const image = this.ctx.getImageData(0, 0, w, h);
     this.busy = true;
     this.frameStart = performance.now();
+    this.frame = { crop, scale, view };
     this.worker.postMessage({ id: ++this.frameId, width: w, height: h, buffer: image.data.buffer }, [image.data.buffer]);
   }
 
   #handleResult(data) {
     this.busy = false;
     if (!this.running) return;
-    this.onResult?.(data.found ? { text: data.text, bytes: data.bytes } : null);
+    const { crop, scale, view } = this.frame;
+    // Frame pixels -> video pixels -> fraction of the (object-fit: cover) preview.
+    const toView = ([px, py]) => {
+      const vx = crop.x + px / scale;
+      const vy = crop.y + py / scale;
+      const x = view.width ? (view.dx + vx * view.fit) / view.width : 0.5;
+      const y = view.height ? (view.dy + vy * view.fit) / view.height : 0.5;
+      return [view.mirrored ? 1 - x : x, y];
+    };
+    const codes = data.codes.map((code) => {
+      const quad = code.quad.map(toView);
+      const center = [(quad[0][0] + quad[2][0]) / 2, (quad[0][1] + quad[2][1]) / 2];
+      return { text: code.text, bytes: code.bytes, quad, center };
+    });
+    this.onResult?.(codes);
     const elapsed = performance.now() - this.frameStart;
     this.#schedule(Math.max(0, FRAME_INTERVAL_MS - elapsed));
   }
 
-  /** The viewfinder's area in video pixel coordinates (video uses object-fit: cover). */
-  #cropRect() {
+  /** How the video frame maps onto the preview element (object-fit: cover). */
+  #viewLayout() {
     const v = this.video;
-    const vw = v.videoWidth;
-    const vh = v.videoHeight;
-    const vr = v.getBoundingClientRect();
+    const rect = v.getBoundingClientRect();
+    const fit = rect.width > 0 && rect.height > 0 ? Math.max(rect.width / v.videoWidth, rect.height / v.videoHeight) : 1;
+    return {
+      rect,
+      width: rect.width,
+      height: rect.height,
+      fit,
+      dx: (rect.width - v.videoWidth * fit) / 2,
+      dy: (rect.height - v.videoHeight * fit) / 2,
+      mirrored: this.mirrored,
+    };
+  }
+
+  /** The viewfinder's area in video pixel coordinates. */
+  #cropRect(view) {
+    const vw = this.video.videoWidth;
+    const vh = this.video.videoHeight;
+    const vr = view.rect;
     const fr = this.viewfinder?.getBoundingClientRect();
     if (vr.width > 0 && vr.height > 0 && fr && fr.width > 0) {
-      const scale = Math.max(vr.width / vw, vr.height / vh);
-      const dx = (vr.width - vw * scale) / 2;
-      const dy = (vr.height - vh * scale) / 2;
+      const { fit: scale, dx, dy } = view;
       const w = fr.width / scale;
       const h = fr.height / scale;
       let x = (fr.left - vr.left - dx) / scale;
