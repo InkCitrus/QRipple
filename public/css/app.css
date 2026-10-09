@@ -215,16 +215,6 @@ main {
 
 @keyframes blink { 50% { opacity: 0.25; } }
 
-.notice {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--warn-soft);
-  color: var(--warn);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .banner {
   padding: 10px 14px;
   border-radius: var(--radius-sm);
@@ -333,16 +323,14 @@ main {
     grid-template-areas:
       "camera code"
       "camera content"
-      "camera notice"
       "camera end";
-    grid-template-rows: auto auto auto 1fr;
+    grid-template-rows: auto auto 1fr;
     align-items: start;
     gap: 16px;
   }
   .share-grid .camera-card { grid-area: camera; }
   .share-grid .code-card { grid-area: code; }
   .share-grid .content-card { grid-area: content; }
-  .share-grid .notice { grid-area: notice; }
   .share-grid #share-end { grid-area: end; }
 }
 
@@ -460,6 +448,74 @@ main {
 .scan-pill[data-state="detected"]::before { background: #4ade80; }
 .scan-pill[data-state="lost"]::before { background: #fb923c; }
 .scan-pill[data-state="paused"]::before, .scan-pill[data-state="error"]::before { background: #f87171; }
+
+/* Several codes in view: numbered markers on the preview plus a list. */
+.code-markers { position: absolute; inset: 0; pointer-events: none; }
+.code-outlines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.code-outlines polygon {
+  fill: rgb(255 255 255 / 12%);
+  stroke: #fff;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+.code-outlines polygon.is-current { fill: rgb(74 222 128 / 18%); stroke: #4ade80; }
+
+.code-marker {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 62%);
+  color: #fff;
+  font: 700 18px/1 var(--font);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.code-marker.is-current { background: #16a34a; border-color: #bbf7d0; }
+
+.code-choices { padding: 12px 14px 14px; border-top: 1px solid var(--border); }
+.code-choices-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.code-choices-list { display: grid; gap: 6px; }
+.code-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 14px/1.3 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.code-choice:hover { border-color: var(--accent); }
+.code-choice.is-current { border-color: var(--ok); background: var(--ok-soft); }
+.code-choice-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 700;
+  font-size: 13px;
+}
+.code-choice.is-current .code-choice-num { background: var(--ok); color: #fff; }
+.code-choice-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+.code-choice-tag { flex: none; font-size: 12px; font-weight: 700; color: var(--ok); }
+.code-marker:focus-visible, .code-choice:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
 
 /* ------------------------------------------------------------------ join */
 
