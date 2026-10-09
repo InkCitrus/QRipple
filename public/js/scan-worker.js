@@ -1,7 +1,8 @@
 // Decodes camera frames off the main thread. Receives RGBA pixels and returns
 // every QR code found: decoded text, raw bytes and corner positions (in the
-// frame's pixel coordinates). Frames never leave the device; only decoded
-// results go back to the page.
+// frame's pixel coordinates), plus the positions of codes that were detected
+// but could not be read (used for auto-zoom). Frames never leave the device;
+// only decoded results go back to the page.
 //
 // Primary decoder: ZXing (zxing-cpp compiled to WebAssembly), which is
 // several times faster than jsQR and copes far better with noisy, low-contrast
@@ -13,15 +14,22 @@ const ZXING_OPTIONS = {
   tryRotate: true,
   tryInvert: true,
   tryDownscale: true,
-  maxNumberOfSymbols: 8, // several codes in view: the page lets the user pick
+  maxNumberOfSymbols: 12, // several codes in view: the page lets the user pick
   textMode: 'Plain',
+  // Also report codes that were found but failed to decode (e.g. too few
+  // pixels per module): their positions drive auto-zoom.
+  returnErrors: true,
 };
 
-// Unsharp mask applied when a frame yields nothing. Recovers out-of-focus
-// codes: on a synthetic blur benchmark, plain + sharpened decoding read 44/48
-// blurred codes versus 39/48 for plain decoding alone.
+// Unsharp mask for a second decoding pass. Recovers out-of-focus codes: on a
+// synthetic blur benchmark, plain + sharpened decoding read 44/48 blurred codes
+// versus 39/48 for plain decoding alone. It runs whenever a frame yields
+// nothing, and every SHARPEN_EVERY frames regardless, so a blurry code next to
+// a sharp one is still found when several codes are in view.
 const SHARPEN_RADIUS = 3;
 const SHARPEN_AMOUNT = 3;
+const SHARPEN_EVERY = 3;
+let frameCount = 0;
 
 let lum = new Uint8Array(0);
 let rowSums = new Uint32Array(0);
@@ -63,8 +71,10 @@ function sharpen(data, width, height) {
 }
 
 const quadOf = (p) => [p.topLeft, p.topRight, p.bottomRight, p.bottomLeft].map((pt) => [pt.x, pt.y]);
+const centerOf = (q) => [(q[0][0] + q[2][0]) / 2, (q[0][1] + q[2][1]) / 2];
+const sizeOf = (q) => Math.hypot(q[2][0] - q[0][0], q[2][1] - q[0][1]);
 
-let decode = null; // (data, width, height) => Promise<Array<{ text, bytes, quad }>>
+let decode = null; // (data, width, height) => Promise<{ codes: [{ text, bytes, quad }], failed: [{ quad }] }>
 
 async function loadZXing() {
   importScripts('/vendor/zxing-reader.js');
@@ -74,15 +84,37 @@ async function loadZXing() {
     overrides: { locateFile: (path) => (path.endsWith('.wasm') ? `/vendor/${path}` : path) },
     fireImmediately: true,
   });
-  const read = async (data, width, height) =>
-    (await zxing.readBarcodes(new ImageData(data, width, height), ZXING_OPTIONS))
-      .filter((r) => r.isValid && r.bytes && r.bytes.length > 0)
-      .map((r) => ({ text: r.text || '', bytes: new Uint8Array(r.bytes), quad: quadOf(r.position) }));
+  const read = async (data, width, height) => {
+    const results = await zxing.readBarcodes(new ImageData(data, width, height), ZXING_OPTIONS);
+    const codes = [];
+    const failed = [];
+    for (const r of results) {
+      if (r.isValid && r.bytes && r.bytes.length > 0) {
+        codes.push({ text: r.text || '', bytes: new Uint8Array(r.bytes), quad: quadOf(r.position) });
+      } else if (!r.isValid && r.position) {
+        const quad = quadOf(r.position);
+        if (sizeOf(quad) > 8) failed.push({ quad }); // some errors carry no position
+      }
+    }
+    return { codes, failed };
+  };
   return async (data, width, height) => {
-    const codes = await read(data, width, height);
-    if (codes.length > 0) return codes;
+    const first = await read(data, width, height);
+    frameCount += 1;
+    if (first.codes.length > 0 && frameCount % SHARPEN_EVERY !== 0) return first;
     sharpen(data, width, height); // readBarcodes has already copied the pixels
-    return read(data, width, height);
+    const second = await read(data, width, height);
+    const codes = first.codes;
+    const seen = new Set(codes.map((c) => c.text + '\u0000' + c.bytes.join(',')));
+    for (const code of second.codes) {
+      if (!seen.has(code.text + '\u0000' + code.bytes.join(','))) codes.push(code);
+    }
+    // A failure the sharpened pass managed to read is not a failure.
+    const failed = [...first.failed, ...second.failed].filter((f) => {
+      const c = centerOf(f.quad);
+      return !codes.some((code) => Math.hypot(...centerOf(code.quad).map((v, i) => v - c[i])) < sizeOf(code.quad) / 2);
+    });
+    return { codes, failed };
   };
 }
 
@@ -90,10 +122,10 @@ function loadJsQR() {
   importScripts('/vendor/jsQR.js');
   return async (data, width, height) => {
     const r = self.jsQR(data, width, height, { inversionAttempts: 'attemptBoth' });
-    if (!r || !r.binaryData || r.binaryData.length === 0) return [];
+    if (!r || !r.binaryData || r.binaryData.length === 0) return { codes: [], failed: [] };
     const l = r.location;
     const quad = [l.topLeftCorner, l.topRightCorner, l.bottomRightCorner, l.bottomLeftCorner].map((p) => [p.x, p.y]);
-    return [{ text: r.data || '', bytes: Uint8Array.from(r.binaryData), quad }];
+    return { codes: [{ text: r.data || '', bytes: Uint8Array.from(r.binaryData), quad }], failed: [] };
   };
 }
 
@@ -111,11 +143,11 @@ const ready = (async () => {
 self.onmessage = async (event) => {
   const { id, width, height, buffer } = event.data;
   await ready;
-  let codes = [];
+  let result = { codes: [], failed: [] };
   try {
-    codes = await decode(new Uint8ClampedArray(buffer), width, height);
+    result = await decode(new Uint8ClampedArray(buffer), width, height);
   } catch {
-    codes = [];
+    // keep the empty result
   }
-  self.postMessage({ type: 'result', id, codes }, codes.map((c) => c.bytes.buffer));
+  self.postMessage({ type: 'result', id, ...result }, result.codes.map((c) => c.bytes.buffer));
 };

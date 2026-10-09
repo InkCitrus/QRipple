@@ -25,6 +25,7 @@ export function mountShare(root) {
     cameraMessageText: $('#camera-message-text', root),
     cameraRetry: $('#camera-retry', root),
     cameraSwitch: $('#camera-switch', root),
+    cameraZoom: $('#camera-zoom', root),
     scanStatus: $('#scan-status', root),
     markers: $('#code-markers', root),
     outlines: $('#code-outlines', root),
@@ -53,6 +54,9 @@ export function mountShare(root) {
     camera: 'starting', // scanner state
     cameraError: null,
     canSwitch: false,
+    zoom: 1, // auto-zoom level, when the camera supports zoom
+    zoomSupported: false,
+    wantsCloser: false, // a code keeps failing to read and zoom can't help
     sentKey: null, // payload key sent on the current connection
     ackedKey: null,
     syncedAt: null,
@@ -149,7 +153,8 @@ export function mountShare(root) {
       state.canSwitch = canSwitch;
       render();
     },
-    onResult(codes) {
+    onResult(codes, { zoom = 1, zoomSupported = false, wantsCloser = false } = {}) {
+      Object.assign(state, { zoom, zoomSupported, wantsCloser });
       const keyed = codes.map((code) => ({ ...code, key: bytesToBase64(code.bytes) }));
       if (tracker.update(keyed, Date.now())) shared();
       else {
@@ -176,6 +181,7 @@ export function mountShare(root) {
   function scanState() {
     if (state.camera !== 'running') return state.camera; // starting | paused | error
     if (tracker.needsChoice) return 'multiple';
+    if (state.wantsCloser) return 'closer';
     if (Date.now() - tracker.lastSeenAt < LOST_AFTER_MS) return 'detected';
     return tracker.current ? 'lost' : 'scanning';
   }
@@ -185,6 +191,9 @@ export function mountShare(root) {
     el.scanStatus.dataset.state = s;
     setText(el.scanStatus, t(`scan.${s}`, { n: tracker.visible.length }));
     el.viewfinder.classList.toggle('detected', s === 'detected');
+    const zoomed = state.zoomSupported && state.camera === 'running' && state.zoom > 1.05;
+    el.cameraZoom.hidden = !zoomed;
+    if (zoomed) setText(el.cameraZoom, `${state.zoom.toFixed(1)}×`);
   }
 
   // Numbered markers on the preview plus a list, shown while several codes
@@ -334,6 +343,7 @@ export function mountShare(root) {
   };
   const onRetry = () => scanner.start();
   const onSwitch = () => scanner.switchCamera();
+  const onZoomReset = () => scanner.resetZoom();
   const onLang = () => render();
   const onBeforeUnload = (event) => {
     if (state.phase === 'active' && state.receivers > 0) event.preventDefault();
@@ -343,6 +353,7 @@ export function mountShare(root) {
   el.choices.addEventListener('click', onChoose);
   el.cameraRetry.addEventListener('click', onRetry);
   el.cameraSwitch.addEventListener('click', onSwitch);
+  el.cameraZoom.addEventListener('click', onZoomReset);
   window.addEventListener('langchange', onLang);
   window.addEventListener('beforeunload', onBeforeUnload);
 
@@ -363,6 +374,8 @@ export function mountShare(root) {
       el.choices.removeEventListener('click', onChoose);
       el.cameraRetry.removeEventListener('click', onRetry);
       el.cameraSwitch.removeEventListener('click', onSwitch);
+      el.cameraZoom.removeEventListener('click', onZoomReset);
+      el.cameraZoom.hidden = true;
       window.removeEventListener('langchange', onLang);
       window.removeEventListener('beforeunload', onBeforeUnload);
       // Reset the DOM for the next visit.
