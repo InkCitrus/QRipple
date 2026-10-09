@@ -437,6 +437,24 @@ main {
   backdrop-filter: blur(6px);
 }
 .scan-pill:empty { display: none; }
+
+.camera-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Current auto-zoom level; tapping it resets to 1x. */
+.zoom-badge {
+  min-width: 52px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font: 700 14px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
 .scan-pill::before {
   content: "";
   width: 8px;
@@ -446,7 +464,7 @@ main {
 }
 .scan-pill[data-state="scanning"]::before { animation: blink 1s ease-in-out infinite; }
 .scan-pill[data-state="detected"]::before { background: #4ade80; }
-.scan-pill[data-state="lost"]::before { background: #fb923c; }
+.scan-pill[data-state="lost"]::before, .scan-pill[data-state="closer"]::before { background: #fb923c; }
 .scan-pill[data-state="paused"]::before, .scan-pill[data-state="error"]::before { background: #f87171; }
 
 /* Several codes in view: numbered markers on the preview plus a list. */

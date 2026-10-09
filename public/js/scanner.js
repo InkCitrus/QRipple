@@ -2,12 +2,20 @@
 // viewfinder, decoded in a Web Worker, and never leave the device.
 //
 // onState({ state: 'starting' | 'running' | 'paused' | 'error', error?, canSwitch?, mirrored? })
-// onResult(codes) once per decoded frame, where codes is an array (empty when
-// nothing was found) of { text, bytes, quad, center }. quad holds the four
-// corners and center the middle of the code, both as [x, y] fractions of the
-// preview element, so overlays can be positioned with percentages.
+// onResult(codes, { zoom, zoomSupported, wantsCloser }) once per decoded frame,
+// where codes is an array (empty when nothing was found) of
+// { text, bytes, quad, center }. quad holds the four corners and center the
+// middle of the code, both as [x, y] fractions of the preview element, so
+// overlays can be positioned with percentages.
+//
+// Auto-zoom (see auto-zoom.js) drives the camera's zoom where the browser
+// exposes it (e.g. Chrome on Android); elsewhere wantsCloser tells the page to
+// ask the user to move closer.
+
+import { AutoZoom } from './auto-zoom.js';
 
 const FRAME_INTERVAL_MS = 60; // at most ~16 decodes per second
+const MAX_AUTO_ZOOM = 3;
 // Decode resolution cap (px) per engine. Small codes (e.g. thumbnails next to a
 // big one) need the extra pixels: 1440 px found 4/4 codes where 960 px found 2/4.
 const MAX_SIDE = { zxing: 1440, jsqr: 720 };
@@ -44,6 +52,9 @@ export class Scanner {
     this.deviceId = null;
     this.devices = [];
     this.mirrored = false;
+    this.track = null;
+    this.zoomSupported = false;
+    this.autoZoom = new AutoZoom({ min: 1, max: 1 });
     this.running = false;
     this.stopped = false;
     this.busy = false;
@@ -139,6 +150,17 @@ export class Scanner {
       track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
     }
 
+    // Hardware zoom, where exposed. Never go below 1x (that would switch to a
+    // wider, lower-detail lens on some phones).
+    this.track = track;
+    const zoom = caps.zoom;
+    const base = zoom ? Math.max(zoom.min, 1) : 1;
+    this.zoomSupported = Boolean(zoom && zoom.max > base);
+    this.autoZoom = this.zoomSupported
+      ? new AutoZoom({ min: base, max: Math.min(zoom.max, MAX_AUTO_ZOOM) })
+      : new AutoZoom({ min: 1, max: 1 });
+    if (this.zoomSupported) this.#applyZoom(base);
+
     this.video.srcObject = stream;
     this.video.classList.toggle('mirrored', this.mirrored);
     try {
@@ -158,6 +180,20 @@ export class Scanner {
     this.running = true;
     this.#emit(document.visibilityState === 'visible' ? 'running' : 'paused');
     this.#schedule(0);
+  }
+
+  /** Back to 1x, and leave the zoom alone for a while (the user asked for it). */
+  resetZoom() {
+    if (!this.zoomSupported) return;
+    this.autoZoom.zoom = this.autoZoom.min;
+    this.autoZoom.pause(performance.now() + 10000);
+    this.#applyZoom(this.autoZoom.min);
+  }
+
+  #applyZoom(level) {
+    this.track?.applyConstraints({ advanced: [{ zoom: level }] }).catch(() => {
+      this.zoomSupported = false; // advertised but not actually settable
+    });
   }
 
   async switchCamera() {
@@ -246,12 +282,16 @@ export class Scanner {
       const y = view.height ? (view.dy + vy * view.fit) / view.height : 0.5;
       return [view.mirrored ? 1 - x : x, y];
     };
-    const codes = data.codes.map((code) => {
-      const quad = code.quad.map(toView);
-      const center = [(quad[0][0] + quad[2][0]) / 2, (quad[0][1] + quad[2][1]) / 2];
-      return { text: code.text, bytes: code.bytes, quad, center };
+    const place = (quad) => ({ quad, center: [(quad[0][0] + quad[2][0]) / 2, (quad[0][1] + quad[2][1]) / 2] });
+    const codes = data.codes.map((code) => ({ text: code.text, bytes: code.bytes, ...place(code.quad.map(toView)) }));
+    const failed = (data.failed || []).map((f) => place(f.quad.map(toView)));
+    const level = this.autoZoom.update({ codes, failed }, performance.now());
+    if (level !== null && this.zoomSupported) this.#applyZoom(level);
+    this.onResult?.(codes, {
+      zoom: this.autoZoom.zoom,
+      zoomSupported: this.zoomSupported,
+      wantsCloser: this.autoZoom.wantsCloser,
     });
-    this.onResult?.(codes);
     const elapsed = performance.now() - this.frameStart;
     this.#schedule(Math.max(0, FRAME_INTERVAL_MS - elapsed));
   }
