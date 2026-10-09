@@ -17,7 +17,9 @@ function list(env, name) {
 export function loadConfig(env = process.env) {
   return {
     port: int(env, 'PORT', 3000),
-    host: env.HOST || '0.0.0.0',
+    // One or more addresses to listen on, e.g. "127.0.0.1,100.104.161.105"
+    // (local reverse proxy plus the Tailscale address peers proxy to).
+    hosts: list(env, 'HOST').length ? list(env, 'HOST') : ['0.0.0.0'],
 
     // Sessions
     // Sessions normally end when the sharer ends them or stays offline past
@@ -51,5 +53,9 @@ export function loadConfig(env = process.env) {
     trustProxy: int(env, 'TRUST_PROXY', 0),
     // Extra allowed WebSocket origins besides the page's own host
     allowedOrigins: list(env, 'ALLOWED_ORIGINS'),
+    // Access lines: hostnames that all reach this same server (through
+    // different networks). Clients race them and use whichever connects
+    // first. Empty: clients only use the page's own host.
+    lines: list(env, 'ACCESS_LINES'),
   };
 }

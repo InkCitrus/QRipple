@@ -49,6 +49,7 @@ export function mountShare(root) {
     hadSession: false, // a code was shown during this page's lifetime
     receivers: 0,
     conn: 'connecting',
+    line: null, // access line in use (see connection.js)
     camera: 'starting', // scanner state
     cameraError: null,
     canSwitch: false,
@@ -70,8 +71,9 @@ export function mountShare(root) {
       if (state.sid && state.token) conn.send({ t: 'resume', sid: state.sid, token: state.token });
       else conn.send({ t: 'create' });
     },
-    onStatus(status) {
+    onStatus(status, c) {
       state.conn = status;
+      state.line = c.line?.id ?? null;
       if (status === 'reconnecting' && !conn.everOpened && conn.attempts >= 4 && state.phase === 'starting') {
         finish('failed', 'network');
         return;
@@ -263,7 +265,7 @@ export function mountShare(root) {
     el.ended.hidden = true;
 
     setText(el.code, state.phase === 'active' && state.code ? state.code : '-----');
-    connectionChip(el.conn, state.conn);
+    connectionChip(el.conn, state.conn, state.line);
     setText(el.receivers, t('share.receivers', { n: state.receivers }));
 
     // Camera overlay

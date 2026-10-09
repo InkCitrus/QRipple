@@ -41,9 +41,12 @@ function vendorFiles() {
   ]);
 }
 
-export function securityHeaders(req) {
+export function securityHeaders(req, connectSrc = []) {
   const host = req.headers.host || '';
-  const connect = host ? `'self' wss://${host} ws://${host}` : "'self'";
+  const sources = ["'self'"];
+  if (host) sources.push(`wss://${host}`, `ws://${host}`);
+  sources.push(...connectSrc); // other access lines
+  const connect = [...new Set(sources)].join(' ');
   return {
     'Content-Security-Policy': [
       "default-src 'self'",
@@ -68,7 +71,7 @@ export function securityHeaders(req) {
   };
 }
 
-export function createStaticHandler(publicDir) {
+export function createStaticHandler(publicDir, { connectSrc = [], lines = [] } = {}) {
   const root = path.resolve(publicDir);
   const vendor = vendorFiles();
   const cache = new Map(); // file path -> { mtimeMs, body, gz, etag, type }
@@ -78,8 +81,14 @@ export function createStaticHandler(publicDir) {
     if (!info.isFile()) return null;
     const hit = cache.get(file);
     if (hit && hit.mtimeMs === info.mtimeMs) return hit;
-    const body = await readFile(file);
+    let body = await readFile(file);
     const ext = path.extname(file).toLowerCase();
+    if (ext === '.html') {
+      // Embed the access lines so the page knows them without another request
+      // (that request could stall on a bad line before racing even starts).
+      const json = JSON.stringify(lines).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+      body = Buffer.from(body.toString('utf8').replace('<meta name="qripple-lines" content="">', `<meta name="qripple-lines" content="${json}">`));
+    }
     const entry = {
       mtimeMs: info.mtimeMs,
       body,
@@ -113,7 +122,7 @@ export function createStaticHandler(publicDir) {
         entry = null;
       }
     }
-    const headers = securityHeaders(req);
+    const headers = securityHeaders(req, connectSrc);
     if (!entry) {
       res.writeHead(404, { ...headers, 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('Not found');

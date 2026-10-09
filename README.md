@@ -52,20 +52,29 @@ npm test           # 服务器单元测试与集成测试
 
 浏览器只允许在 HTTPS 或 `localhost` 下使用摄像头。要用手机测试，需要部署到带 HTTPS 的地址。
 
-## 部署
+## 部署（多线接入）
 
-生产环境：<https://qripple.inkorange.com>（服务器 `vps-sh`，Ubuntu 24.04）。
+生产环境：<https://qripple.inkorange.com>，两台东京服务器，分别走两条不同的网络线路：
 
 ```
-Internet ──► Caddy :443 (TLS，Let's Encrypt 自动续期；UDP 443 提供 HTTP/3) ──► Node 127.0.0.1:3000 (systemd: qripple)
-         └─► Caddy :80  (ACME 验证 + 跳转 HTTPS)
+                    ┌─ tk.qripple.inkorange.com ─► vps-tk    (UCloud)    nginx ─┐
+浏览器同时竞速两条线路 ┤                                                         ├─ Tailscale ─► QRipple 主进程 (vps-azure)
+                    └─ az.qripple.inkorange.com ─► vps-azure (Microsoft) nginx ─┘               备用进程 (vps-tk)
+页面 qripple.inkorange.com：两条 A 记录，分别指向两台服务器
 ```
 
-- 首次初始化服务器：`deploy/setup-server.sh`（安装校验过的 Node.js 官方二进制、Caddy、systemd 服务、ufw 规则）
-- 发布新版本：`deploy/deploy.sh [ssh-host]`（先跑测试，再 rsync + `npm ci` + 重启服务）
-- 查看日志：`ssh vps-sh journalctl -u qripple -f`
+- **线路竞速**：客户端从 `/lines.json` 拿到线路列表，优先连上次成功的线路；0.6 秒内没连上就并行尝试下一条，谁先连上用谁。连接断开后重连时，刚断开的线路排在最后。逻辑见 `public/js/connection.js`。
+- **会话一致**：两条线路都转发到同一个 QRipple 主进程，分享者和接收者走不同线路也在同一会话里。主进程不可达时，两边的 nginx 自动切到备用进程。
+- **配置**（`/etc/qripple/qripple.env`，由 `deploy/setup-line.sh` 生成）：`HOST`（监听地址，可多个）、`ACCESS_LINES`（线路主机名）、`ALLOWED_ORIGINS`、`TRUST_PROXY`。
+- **证书**：每台服务器用 certbot（webroot）申请 `qripple.inkorange.com` + 自己的线路域名。主域名同时解析到两台服务器，所以 ACME 验证请求若落到另一台，会通过 Tailscale 转给申请方。
 
-服务为单实例、状态在内存中：重启会结束所有进行中的会话（客户端会提示会话已失效）。
+操作：
+
+- 初始化/更新一条线路：把 `deploy/` 复制到服务器后执行 `deploy/setup-line.sh`（参数见脚本开头）；DNS 生效后加 `--issue-cert` 再执行一次即启用 HTTPS
+- 发布新版本：`deploy/deploy.sh`（默认发布到 `vps-azure` 和 `vps-tk`；先跑测试，再 rsync + `npm ci` + 重启服务）
+- 查看日志：`ssh vps-azure journalctl -u qripple -f`
+
+会话状态只在主进程内存中：主进程重启会结束进行中的会话（客户端会提示会话已失效）。旧的单机部署方式（Caddy）保留在 `deploy/setup-server.sh` / `deploy/Caddyfile`。
 
 ## 项目结构
 
