@@ -4,14 +4,12 @@
 import { t } from './i18n.js';
 import { Connection } from './connection.js';
 import { Scanner } from './scanner.js';
+import { CodeTracker } from './code-tracker.js';
 import { bytesToBase64, describe } from './payload.js';
-import { $, setText, connectionChip, formatDuration, formatClock, createWakeLock, storage, toast } from './ui.js';
+import { $, setText, connectionChip, formatClock, createWakeLock, storage, toast } from './ui.js';
 
 const STORAGE_KEY = 'qripple.share';
-// A *changed* value must be read this many times in a row before it replaces
-// what is shared, so two codes in view (or a one-off misread) can't make
-// receivers flicker. The very first code is shared on its first read.
-const CONFIRM_READS = 2;
+const SVG_NS = 'http://www.w3.org/2000/svg';
 // After this long without a successful read the code counts as out of view.
 const LOST_AFTER_MS = 1200;
 
@@ -21,7 +19,6 @@ export function mountShare(root) {
     code: $('#share-code', root),
     conn: $('#share-conn', root),
     receivers: $('#share-receivers', root),
-    timer: $('#share-timer', root),
     video: $('#camera-video', root),
     viewfinder: $('#viewfinder', root),
     cameraMessage: $('#camera-message', root),
@@ -29,6 +26,10 @@ export function mountShare(root) {
     cameraRetry: $('#camera-retry', root),
     cameraSwitch: $('#camera-switch', root),
     scanStatus: $('#scan-status', root),
+    markers: $('#code-markers', root),
+    outlines: $('#code-outlines', root),
+    choices: $('#code-choices', root),
+    choicesList: $('#code-choices-list', root),
     content: $('#share-content', root),
     meta: $('#share-meta', root),
     end: $('#share-end', root),
@@ -46,22 +47,19 @@ export function mountShare(root) {
     sid: saved?.sid ?? null,
     token: saved?.token ?? null,
     hadSession: false, // a code was shown during this page's lifetime
-    deadline: null,
     receivers: 0,
     conn: 'connecting',
     camera: 'starting', // scanner state
     cameraError: null,
     canSwitch: false,
-    current: null, // { key, text, bytes, at } — last confirmed payload
-    candidate: null,
-    candidateCount: 0,
-    lastSeenAt: 0,
     sentKey: null, // payload key sent on the current connection
     ackedKey: null,
     syncedAt: null,
   };
 
   const wakeLock = createWakeLock();
+  // Which code is shared when zero, one or several are in view (see code-tracker.js).
+  const tracker = new CodeTracker();
 
   // ------------------------------------------------------------ connection
 
@@ -88,7 +86,6 @@ export function mountShare(root) {
         case 'resumed':
           state.code = msg.code;
           state.sid = msg.sid;
-          state.deadline = Date.now() + msg.remainingMs;
           state.receivers = msg.receivers ?? 0;
           state.phase = 'active';
           state.hadSession = true;
@@ -134,7 +131,7 @@ export function mountShare(root) {
 
   /** Send the current payload if the server doesn't have it yet. */
   function flush() {
-    const current = state.current;
+    const current = tracker.current;
     if (state.phase !== 'active' || !current || state.sentKey === current.key) return;
     if (conn.send({ t: 'update', text: current.text, data: current.key })) state.sentKey = current.key;
   }
@@ -150,61 +147,108 @@ export function mountShare(root) {
       state.canSwitch = canSwitch;
       render();
     },
-    onResult(result) {
-      const now = Date.now();
-      if (!result) {
-        state.candidate = null;
-        state.candidateCount = 0;
+    onResult(codes) {
+      const keyed = codes.map((code) => ({ ...code, key: bytesToBase64(code.bytes) }));
+      if (tracker.update(keyed, Date.now())) shared();
+      else {
         renderScan();
-        return;
+        renderChoices();
       }
-      state.lastSeenAt = now;
-      const key = bytesToBase64(result.bytes);
-      if (state.current?.key === key) {
-        state.candidate = null;
-        state.candidateCount = 0;
-      } else {
-        if (state.candidate?.key === key) state.candidateCount += 1;
-        else {
-          state.candidate = { key, text: result.text, bytes: result.bytes };
-          state.candidateCount = 1;
-        }
-        if (!state.current || state.candidateCount >= CONFIRM_READS) {
-          state.current = { ...state.candidate, at: now };
-          state.candidate = null;
-          state.candidateCount = 0;
-          navigator.vibrate?.(30);
-          flush();
-          render();
-          return;
-        }
-      }
-      renderScan();
     },
   });
+
+  /** A new code is now being shared. */
+  function shared() {
+    navigator.vibrate?.(30);
+    flush();
+    render();
+  }
+
+  function choose(key) {
+    if (tracker.choose(key, Date.now())) shared();
+    else render();
+  }
 
   // ------------------------------------------------------------ rendering
 
   function scanState() {
     if (state.camera !== 'running') return state.camera; // starting | paused | error
-    if (Date.now() - state.lastSeenAt < LOST_AFTER_MS) return 'detected';
-    return state.current ? 'lost' : 'scanning';
+    if (tracker.needsChoice) return 'multiple';
+    if (Date.now() - tracker.lastSeenAt < LOST_AFTER_MS) return 'detected';
+    return tracker.current ? 'lost' : 'scanning';
   }
 
   function renderScan() {
     const s = scanState();
     el.scanStatus.dataset.state = s;
-    setText(el.scanStatus, t(`scan.${s}`));
+    setText(el.scanStatus, t(`scan.${s}`, { n: tracker.visible.length }));
     el.viewfinder.classList.toggle('detected', s === 'detected');
   }
 
-  function renderTimer() {
-    if (!state.deadline) {
-      el.timer.hidden = true;
-      return;
+  // Numbered markers on the preview plus a list, shown while several codes
+  // are in view. Elements are reused per code so a tap is never lost to a
+  // re-render (results arrive ~16 times a second).
+  const choiceEls = new Map(); // key -> { marker, outline, item, num, text, tag }
+
+  function choiceElements(key) {
+    let els = choiceEls.get(key);
+    if (els) return els;
+    const marker = document.createElement('button');
+    marker.type = 'button';
+    marker.className = 'code-marker';
+    marker.dataset.key = key;
+    const outline = document.createElementNS(SVG_NS, 'polygon');
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'code-choice';
+    item.dataset.key = key;
+    const num = document.createElement('span');
+    num.className = 'code-choice-num';
+    const text = document.createElement('span');
+    text.className = 'code-choice-text';
+    const tag = document.createElement('span');
+    tag.className = 'code-choice-tag';
+    item.append(num, text, tag);
+    el.markers.append(marker);
+    el.outlines.append(outline);
+    els = { marker, outline, item, num, text, tag };
+    choiceEls.set(key, els);
+    return els;
+  }
+
+  function renderChoices() {
+    const codes = state.camera === 'running' ? tracker.visible : [];
+    const show = codes.length >= 2;
+    el.markers.hidden = !show;
+    el.choices.hidden = !show;
+    const live = new Set(show ? codes.map((c) => c.key) : []);
+    for (const [key, els] of choiceEls) {
+      if (live.has(key)) continue;
+      els.marker.remove();
+      els.outline.remove();
+      els.item.remove();
+      choiceEls.delete(key);
     }
-    el.timer.hidden = false;
-    setText(el.timer, t('common.remaining', { time: formatDuration(state.deadline - Date.now()) }));
+    if (!show) return;
+    const currentKey = tracker.current?.key;
+    codes.forEach((code, i) => {
+      const els = choiceElements(code.key);
+      const n = String(i + 1);
+      const isCurrent = code.key === currentKey;
+      setText(els.marker, n);
+      els.marker.setAttribute('aria-label', t('share.chooseCode', { n }));
+      els.marker.style.left = `${(code.center[0] * 100).toFixed(2)}%`;
+      els.marker.style.top = `${(code.center[1] * 100).toFixed(2)}%`;
+      els.marker.classList.toggle('is-current', isCurrent);
+      els.outline.setAttribute('points', code.quad.map(([x, y]) => `${(x * 100).toFixed(2)},${(y * 100).toFixed(2)}`).join(' '));
+      els.outline.classList.toggle('is-current', isCurrent);
+      const shown = describe(code.text, code.bytes);
+      setText(els.num, n);
+      setText(els.text, shown.binary ? t('common.binary', { n: code.bytes.length }) : shown.text);
+      setText(els.tag, isCurrent ? t('share.sharingTag') : '');
+      els.item.classList.toggle('is-current', isCurrent);
+      el.choicesList.append(els.item); // keeps the list in on-screen numbering order
+    });
   }
 
   function render() {
@@ -221,7 +265,6 @@ export function mountShare(root) {
     setText(el.code, state.phase === 'active' && state.code ? state.code : '-----');
     connectionChip(el.conn, state.conn);
     setText(el.receivers, t('share.receivers', { n: state.receivers }));
-    renderTimer();
 
     // Camera overlay
     const error = state.camera === 'error' ? state.cameraError : null;
@@ -230,9 +273,10 @@ export function mountShare(root) {
     el.cameraRetry.hidden = error === 'insecure' || error === 'unsupported';
     el.cameraSwitch.hidden = !state.canSwitch || state.camera !== 'running';
     renderScan();
+    renderChoices();
 
     // Current payload
-    const current = state.current;
+    const current = tracker.current;
     if (!current) {
       el.content.classList.add('empty');
       setText(el.content, t('share.noContent'));
@@ -277,11 +321,14 @@ export function mountShare(root) {
 
   const ticker = setInterval(() => {
     if (state.phase === 'ended') return;
-    renderTimer();
     renderScan();
   }, 500);
   const onEnd = () => {
     if (window.confirm(t('share.endConfirm'))) endSharing();
+  };
+  const onChoose = (event) => {
+    const target = event.target.closest('[data-key]');
+    if (target) choose(target.dataset.key);
   };
   const onRetry = () => scanner.start();
   const onSwitch = () => scanner.switchCamera();
@@ -290,6 +337,8 @@ export function mountShare(root) {
     if (state.phase === 'active' && state.receivers > 0) event.preventDefault();
   };
   el.end.addEventListener('click', onEnd);
+  el.markers.addEventListener('click', onChoose);
+  el.choices.addEventListener('click', onChoose);
   el.cameraRetry.addEventListener('click', onRetry);
   el.cameraSwitch.addEventListener('click', onSwitch);
   window.addEventListener('langchange', onLang);
@@ -308,6 +357,8 @@ export function mountShare(root) {
       if (state.phase !== 'ended') endSharing();
       clearInterval(ticker);
       el.end.removeEventListener('click', onEnd);
+      el.markers.removeEventListener('click', onChoose);
+      el.choices.removeEventListener('click', onChoose);
       el.cameraRetry.removeEventListener('click', onRetry);
       el.cameraSwitch.removeEventListener('click', onSwitch);
       window.removeEventListener('langchange', onLang);
@@ -316,6 +367,8 @@ export function mountShare(root) {
       el.main.hidden = false;
       el.ended.hidden = true;
       el.video.classList.remove('mirrored');
+      state.camera = 'stopped';
+      renderChoices(); // removes any leftover markers
     },
   };
 }
