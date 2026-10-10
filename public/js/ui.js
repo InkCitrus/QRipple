@@ -1,6 +1,7 @@
 // Small DOM and formatting helpers shared by the views.
 
 import { getLang, t } from './i18n.js';
+import { linkSegments } from './linkify.js';
 
 export function $(selector, root = document) {
   return root.querySelector(selector);
@@ -8,6 +9,28 @@ export function $(selector, root = document) {
 
 export function setText(el, text) {
   if (el.textContent !== text) el.textContent = text;
+}
+
+const linkified = new WeakMap(); // element -> text it currently shows with links
+
+/**
+ * Show text with its http(s) URLs as links (opened in a new tab). Built from
+ * text nodes and <a> elements only, never HTML, since QR content is untrusted.
+ */
+export function setLinkedText(el, text) {
+  if (linkified.get(el) === text && el.textContent === text) return;
+  el.replaceChildren(
+    ...linkSegments(text).map((segment) => {
+      if (!segment.href) return document.createTextNode(segment.text);
+      const a = document.createElement('a');
+      a.href = segment.href;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer nofollow';
+      a.textContent = segment.text;
+      return a;
+    }),
+  );
+  linkified.set(el, text);
 }
 
 let toastTimer = null;

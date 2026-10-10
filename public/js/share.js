@@ -6,7 +6,7 @@ import { Connection } from './connection.js';
 import { Scanner } from './scanner.js';
 import { CodeTracker } from './code-tracker.js';
 import { bytesToBase64, describe } from './payload.js';
-import { $, setText, connectionChip, formatClock, createWakeLock, storage, toast } from './ui.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, createWakeLock, storage, toast } from './ui.js';
 
 const STORAGE_KEY = 'qripple.share';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -295,7 +295,7 @@ export function mountShare(root) {
     } else {
       const shown = describe(current.text, current.bytes);
       el.content.classList.remove('empty');
-      setText(el.content, shown.binary ? `${t('common.binary', { n: current.bytes.length })}\n${shown.text}` : shown.text);
+      setLinkedText(el.content, shown.binary ? `${t('common.binary', { n: current.bytes.length })}\n${shown.text}` : shown.text);
       let meta;
       if (state.ackedKey === current.key) meta = t('share.synced', { time: formatClock(state.syncedAt) });
       else if (state.conn === 'online') meta = t('share.syncing');
