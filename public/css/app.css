@@ -237,6 +237,11 @@ main {
   overflow: auto;
 }
 .content-preview.empty { font-family: var(--font); color: var(--muted); }
+.content-preview a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .content-meta, .qr-meta { margin-top: 8px; font-size: 13px; color: var(--muted); }
 
 .toast {

@@ -5,7 +5,7 @@ import { t } from './i18n.js';
 import { Connection } from './connection.js';
 import { base64ToBytes, describe } from './payload.js';
 import { renderQrSvg } from './qr-render.js';
-import { $, setText, connectionChip, formatClock, copyText, createWakeLock, toast } from './ui.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, copyText, createWakeLock, toast } from './ui.js';
 
 const CODE_RE = /^\d{5}$/;
 const JOIN_ERRORS = new Set(['not_found', 'full', 'rate_limited', 'network']);
@@ -204,7 +204,7 @@ export function mountJoin(root, { navigate }) {
       el.contentCard.hidden = !p;
       if (p) {
         const shown = describe(p.text, p.bytes);
-        setText(el.content, shown.binary ? `${t('common.binary', { n: p.bytes.length })}\n${shown.text}` : shown.text);
+        setLinkedText(el.content, shown.binary ? `${t('common.binary', { n: p.bytes.length })}\n${shown.text}` : shown.text);
         setText(el.qrMeta, t('join.updatedAt', { time: formatClock(p.receivedAt) }));
       } else {
         setText(el.qrMeta, '');
