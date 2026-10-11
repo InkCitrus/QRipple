@@ -226,6 +226,16 @@ main {
 
 .hint { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
 
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -6px -6px 0 0; /* let the button sit in the card's padding */
+}
+.card-head .btn { min-height: 34px; padding: 0 12px; gap: 6px; }
+.card-head .btn svg { width: 16px; height: 16px; }
+
 .content-preview {
   margin: 8px 0 0;
   font-family: var(--mono);

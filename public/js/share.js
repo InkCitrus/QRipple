@@ -6,7 +6,7 @@ import { Connection } from './connection.js';
 import { Scanner } from './scanner.js';
 import { CodeTracker } from './code-tracker.js';
 import { bytesToBase64, describe } from './payload.js';
-import { $, setText, setLinkedText, connectionChip, formatClock, createWakeLock, storage, toast } from './ui.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, createWakeLock, storage, toast } from './ui.js';
 
 const STORAGE_KEY = 'qripple.share';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -32,6 +32,7 @@ export function mountShare(root) {
     choices: $('#code-choices', root),
     choicesList: $('#code-choices-list', root),
     content: $('#share-content', root),
+    copy: $('#share-copy', root),
     meta: $('#share-meta', root),
     end: $('#share-end', root),
     ended: $('#share-ended', root),
@@ -288,6 +289,7 @@ export function mountShare(root) {
 
     // Current payload
     const current = tracker.current;
+    el.copy.disabled = !current;
     if (!current) {
       el.content.classList.add('empty');
       setText(el.content, t('share.noContent'));
@@ -341,6 +343,10 @@ export function mountShare(root) {
     const target = event.target.closest('[data-key]');
     if (target) choose(target.dataset.key);
   };
+  const onCopy = () => {
+    const current = tracker.current;
+    if (current) copyPayload(current.text, current.bytes);
+  };
   const onRetry = () => scanner.start();
   const onSwitch = () => scanner.switchCamera();
   const onZoomReset = () => scanner.resetZoom();
@@ -349,6 +355,7 @@ export function mountShare(root) {
     if (state.phase === 'active' && state.receivers > 0) event.preventDefault();
   };
   el.end.addEventListener('click', onEnd);
+  el.copy.addEventListener('click', onCopy);
   el.markers.addEventListener('click', onChoose);
   el.choices.addEventListener('click', onChoose);
   el.cameraRetry.addEventListener('click', onRetry);
@@ -370,6 +377,7 @@ export function mountShare(root) {
       if (state.phase !== 'ended') endSharing();
       clearInterval(ticker);
       el.end.removeEventListener('click', onEnd);
+      el.copy.removeEventListener('click', onCopy);
       el.markers.removeEventListener('click', onChoose);
       el.choices.removeEventListener('click', onChoose);
       el.cameraRetry.removeEventListener('click', onRetry);

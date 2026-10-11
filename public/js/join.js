@@ -5,7 +5,7 @@ import { t } from './i18n.js';
 import { Connection } from './connection.js';
 import { base64ToBytes, describe } from './payload.js';
 import { renderQrSvg } from './qr-render.js';
-import { $, setText, setLinkedText, connectionChip, formatClock, copyText, createWakeLock, toast } from './ui.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, createWakeLock } from './ui.js';
 
 const CODE_RE = /^\d{5}$/;
 const JOIN_ERRORS = new Set(['not_found', 'full', 'rate_limited', 'network']);
@@ -166,12 +166,8 @@ export function mountJoin(root, { navigate }) {
     }
   }
 
-  async function copyPayload() {
-    const p = state.payload;
-    if (!p) return;
-    const shown = describe(p.text, p.bytes);
-    const ok = await copyText(shown.binary ? shown.fullHex() : shown.text);
-    toast(t(ok ? 'common.copied' : 'common.copyFailed'));
+  function onCopy() {
+    if (state.payload) copyPayload(state.payload.text, state.payload.bytes);
   }
 
   // ------------------------------------------------------------ rendering
@@ -251,7 +247,7 @@ export function mountJoin(root, { navigate }) {
   const onLang = () => render();
   el.form.addEventListener('submit', onSubmit);
   el.input.addEventListener('input', onInput);
-  el.copy.addEventListener('click', copyPayload);
+  el.copy.addEventListener('click', onCopy);
   el.leave.addEventListener('click', onLeave);
   window.addEventListener('langchange', onLang);
 
@@ -267,7 +263,7 @@ export function mountJoin(root, { navigate }) {
       clearTimeout(retryTimer);
       el.form.removeEventListener('submit', onSubmit);
       el.input.removeEventListener('input', onInput);
-      el.copy.removeEventListener('click', copyPayload);
+      el.copy.removeEventListener('click', onCopy);
       el.leave.removeEventListener('click', onLeave);
       window.removeEventListener('langchange', onLang);
       // Reset the DOM for the next visit.
