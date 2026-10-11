@@ -2,7 +2,8 @@
 
 import { getLang, t } from './i18n.js';
 import { linkSegments } from './linkify.js';
-import { describe } from './payload.js';
+import { payloadText } from './payload.js';
+import { appIntentUrl, firstLink, isPackageName, launchPlatform, shortcutUrl } from './launch.js';
 
 export function $(selector, root = document) {
   return root.querySelector(selector);
@@ -87,9 +88,88 @@ export async function copyText(text) {
 
 /** Copy a QR payload as text (full hex for binary data) and report the result. */
 export async function copyPayload(text, bytes) {
-  const shown = describe(text, bytes);
-  const ok = await copyText(shown.binary ? shown.fullHex() : shown.text);
+  const ok = await copyText(payloadText(text, bytes));
   toast(t(ok ? 'common.copied' : 'common.copyFailed'));
+}
+
+const LAUNCH_KEY = 'qripple.launch';
+let launchTarget = (() => {
+  try {
+    return localStorage.getItem(LAUNCH_KEY) || '';
+  } catch {
+    return '';
+  }
+})();
+
+/**
+ * "Open in app": hands the QR content to the app the user named once (kept in
+ * this browser, shared by both views): a Shortcuts shortcut on Apple devices,
+ * or an Android app (by package name) for the first web link. Hidden
+ * elsewhere. `getPayload()` returns the current { text, bytes } or null.
+ */
+export function mountLaunch(root, getPayload) {
+  const run = $('.launch-run', root);
+  const label = $('.launch-label', root);
+  const note = $('.launch-note', root);
+  const target = $('.launch-target', root);
+  const change = $('.launch-change', root);
+  const platform = launchPlatform(navigator.userAgent);
+
+  function launchUrl() {
+    const p = getPayload();
+    if (!p || !launchTarget) return null;
+    const text = payloadText(p.text, p.bytes);
+    if (platform === 'shortcuts') return shortcutUrl(launchTarget, text);
+    const link = firstLink(text);
+    return link && isPackageName(launchTarget) ? appIntentUrl(link, launchTarget) : null;
+  }
+
+  function render() {
+    run.hidden = !platform;
+    note.hidden = !platform || !launchTarget;
+    if (!platform) return;
+    setText(label, t(`launch.${platform}.${launchTarget ? 'run' : 'setup'}`));
+    setText(target, launchTarget ? t(`launch.${platform}.target`, { name: launchTarget }) : '');
+    run.title = target.textContent;
+    run.disabled = Boolean(launchTarget) && !launchUrl();
+  }
+
+  function editTarget() {
+    const input = window.prompt(t(`launch.${platform}.prompt`), launchTarget);
+    if (input === null) return;
+    const value = input.trim();
+    if (value && platform === 'android' && !isPackageName(value)) {
+      toast(t('launch.android.invalid'));
+      return;
+    }
+    launchTarget = value;
+    try {
+      if (value) localStorage.setItem(LAUNCH_KEY, value);
+      else localStorage.removeItem(LAUNCH_KEY);
+    } catch {
+      // private mode: the choice lasts until the page is closed
+    }
+    render();
+  }
+
+  function onRun() {
+    if (!launchTarget) {
+      editTarget();
+      return;
+    }
+    const url = launchUrl();
+    if (url) window.location.href = url;
+  }
+
+  run.addEventListener('click', onRun);
+  change.addEventListener('click', editTarget);
+  return {
+    render,
+    unmount() {
+      run.removeEventListener('click', onRun);
+      change.removeEventListener('click', editTarget);
+    },
+  };
 }
 
 /** Keep the screen on while a session is active (where supported). */

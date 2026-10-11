@@ -226,15 +226,32 @@ main {
 
 .hint { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
 
-.card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: -6px -6px 0 0; /* let the button sit in the card's padding */
+/* Copy and "open in app" side by side; minmax(0, …) columns so long text never widens the card. */
+.content-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 12px; }
+.content-actions .btn { min-width: 0; padding: 0 10px; gap: 6px; }
+.content-actions .btn svg { flex: none; width: 18px; height: 18px; }
+.content-actions .btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.launch-note {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
+  justify-content: start;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
 }
-.card-head .btn { min-height: 34px; padding: 0 12px; gap: 6px; }
-.card-head .btn svg { width: 16px; height: 16px; }
+.launch-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-strong);
+  cursor: pointer;
+}
+.link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
 .content-preview {
   margin: 8px 0 0;

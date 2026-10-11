@@ -94,16 +94,24 @@
           </div>
         </div>
 
-        <div class="card content-card">
-          <div class="card-head">
-            <div class="card-label" data-i18n="share.currentLabel"></div>
-            <button type="button" class="btn btn-secondary btn-small" id="share-copy" disabled>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></svg>
-              <span data-i18n="share.copy"></span>
-            </button>
-          </div>
+        <div class="card content-card" id="share-content-card">
+          <div class="card-label" data-i18n="share.currentLabel"></div>
           <p class="content-preview empty" id="share-content" data-i18n="share.noContent"></p>
           <div class="content-meta" id="share-meta"></div>
+          <div class="content-actions">
+            <button type="button" class="btn btn-secondary btn-small" id="share-copy" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></svg>
+              <span data-i18n="common.copy"></span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-small launch-run" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M8 10H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>
+              <span class="launch-label"></span>
+            </button>
+          </div>
+          <p class="launch-note" hidden>
+            <span class="launch-target"></span>
+            <button type="button" class="link-btn launch-change" data-i18n="launch.change"></button>
+          </p>
         </div>
 
         <button type="button" class="btn btn-danger btn-block" id="share-end" data-i18n="share.end"></button>
@@ -155,7 +163,20 @@
         <div class="card content-card" id="join-content-card" hidden>
           <div class="card-label" data-i18n="join.contentLabel"></div>
           <p class="content-preview" id="join-content"></p>
-          <button type="button" class="btn btn-secondary btn-block" id="join-copy" data-i18n="join.copy"></button>
+          <div class="content-actions">
+            <button type="button" class="btn btn-secondary" id="join-copy">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></svg>
+              <span data-i18n="common.copy"></span>
+            </button>
+            <button type="button" class="btn btn-secondary launch-run" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M8 10H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>
+              <span class="launch-label"></span>
+            </button>
+          </div>
+          <p class="launch-note" hidden>
+            <span class="launch-target"></span>
+            <button type="button" class="link-btn launch-change" data-i18n="launch.change"></button>
+          </p>
         </div>
 
         <button type="button" class="btn btn-ghost btn-block" id="join-leave" data-i18n="join.leave"></button>

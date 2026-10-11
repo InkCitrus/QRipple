@@ -5,7 +5,7 @@ import { t } from './i18n.js';
 import { Connection } from './connection.js';
 import { base64ToBytes, describe } from './payload.js';
 import { renderQrSvg } from './qr-render.js';
-import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, createWakeLock } from './ui.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, mountLaunch, createWakeLock } from './ui.js';
 
 const CODE_RE = /^\d{5}$/;
 const JOIN_ERRORS = new Set(['not_found', 'full', 'rate_limited', 'network']);
@@ -45,6 +45,7 @@ export function mountJoin(root, { navigate }) {
   };
 
   const wakeLock = createWakeLock();
+  const launch = mountLaunch(el.contentCard, () => state.payload);
   let conn = null;
   let retryTimer = null;
 
@@ -202,6 +203,7 @@ export function mountJoin(root, { navigate }) {
         const shown = describe(p.text, p.bytes);
         setLinkedText(el.content, shown.binary ? `${t('common.binary', { n: p.bytes.length })}\n${shown.text}` : shown.text);
         setText(el.qrMeta, t('join.updatedAt', { time: formatClock(p.receivedAt) }));
+        launch.render();
       } else {
         setText(el.qrMeta, '');
       }
@@ -264,6 +266,7 @@ export function mountJoin(root, { navigate }) {
       el.form.removeEventListener('submit', onSubmit);
       el.input.removeEventListener('input', onInput);
       el.copy.removeEventListener('click', onCopy);
+      launch.unmount();
       el.leave.removeEventListener('click', onLeave);
       window.removeEventListener('langchange', onLang);
       // Reset the DOM for the next visit.

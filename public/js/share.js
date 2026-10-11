@@ -6,7 +6,7 @@ import { Connection } from './connection.js';
 import { Scanner } from './scanner.js';
 import { CodeTracker } from './code-tracker.js';
 import { bytesToBase64, describe } from './payload.js';
-import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, createWakeLock, storage, toast } from './ui.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, mountLaunch, createWakeLock, storage, toast } from './ui.js';
 
 const STORAGE_KEY = 'qripple.share';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -66,6 +66,7 @@ export function mountShare(root) {
   const wakeLock = createWakeLock();
   // Which code is shared when zero, one or several are in view (see code-tracker.js).
   const tracker = new CodeTracker();
+  const launch = mountLaunch($('#share-content-card', root), () => tracker.current);
 
   // ------------------------------------------------------------ connection
 
@@ -290,6 +291,7 @@ export function mountShare(root) {
     // Current payload
     const current = tracker.current;
     el.copy.disabled = !current;
+    launch.render();
     if (!current) {
       el.content.classList.add('empty');
       setText(el.content, t('share.noContent'));
@@ -378,6 +380,7 @@ export function mountShare(root) {
       clearInterval(ticker);
       el.end.removeEventListener('click', onEnd);
       el.copy.removeEventListener('click', onCopy);
+      launch.unmount();
       el.markers.removeEventListener('click', onChoose);
       el.choices.removeEventListener('click', onChoose);
       el.cameraRetry.removeEventListener('click', onRetry);
