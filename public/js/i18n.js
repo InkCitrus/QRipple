@@ -16,6 +16,7 @@ const messages = {
     'home.fact3': '临时会话，结束或过期后立即失效，不保存任何记录',
 
     'common.github': '在 GitHub 上查看源代码',
+    'common.licenses': '开源许可',
     'common.privacy': '隐私优先：只传输解码后的数据，不传输图像或视频。',
     'common.home': '返回首页',
     'common.copy': '复制',
@@ -124,6 +125,7 @@ const messages = {
     'home.fact3': 'Temporary sessions: nothing is kept once they end or expire',
 
     'common.github': 'Source code on GitHub',
+    'common.licenses': 'Open-source licenses',
     'common.privacy': 'Privacy first: only decoded data is sent, never images or video.',
     'common.home': 'Back to home',
     'common.copy': 'Copy',

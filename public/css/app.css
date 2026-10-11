@@ -129,6 +129,8 @@ main {
   font-size: 12px;
   color: var(--muted);
 }
+.footer a { text-underline-offset: 2px; }
+.footer a:hover { color: var(--text); }
 
 /* ------------------------------------------------------------------ shared */
 

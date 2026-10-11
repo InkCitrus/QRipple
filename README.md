@@ -283,4 +283,4 @@ test/                node:test 测试
 
 ## License
 
-[Apache-2.0](LICENSE)
+[Apache-2.0](LICENSE)。网站发送到浏览器的第三方组件（jsQR、qrcode-generator、zxing-wasm 和图标）的许可声明见 [public/third-party-notices.txt](public/third-party-notices.txt)，网站页脚的“开源许可”链接也指向它；增加或升级这类依赖时请一并更新。

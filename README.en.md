@@ -283,4 +283,4 @@ Issues and pull requests are welcome. Please run `npm test` before submitting; t
 
 ## License
 
-[Apache-2.0](LICENSE)
+[Apache-2.0](LICENSE). Notices for the third-party components the site sends to browsers (jsQR, qrcode-generator, zxing-wasm and icons) are in [public/third-party-notices.txt](public/third-party-notices.txt), linked as "Open-source licenses" in the site's footer; update it when adding or upgrading such a dependency.
