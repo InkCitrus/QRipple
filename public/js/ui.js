@@ -92,18 +92,77 @@ export async function copyPayload(text, bytes) {
   toast(t(ok ? 'common.copied' : 'common.copyFailed'));
 }
 
-const LAUNCH_KEY = 'qripple.launch';
-let shortcutName = (() => {
+// Apple devices can swap "Share link" for a Shortcuts shortcut in settings.
+// The name keeps its original key so names saved before the switch existed
+// are still filled in when it is turned on.
+const SHORTCUT_NAME_KEY = 'qripple.launch';
+const SHORTCUT_ON_KEY = 'qripple.shortcut';
+
+function readPref(key) {
   try {
-    return localStorage.getItem(LAUNCH_KEY) || '';
+    return localStorage.getItem(key) || '';
   } catch {
     return '';
   }
-})();
+}
+
+function writePref(key, value) {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // private mode: the choice lasts until the page is closed
+  }
+}
+
+const shortcut = { enabled: readPref(SHORTCUT_ON_KEY) === '1', name: readPref(SHORTCUT_NAME_KEY) };
+
+function setShortcut(changes) {
+  Object.assign(shortcut, changes);
+  writePref(SHORTCUT_ON_KEY, shortcut.enabled ? '1' : '');
+  writePref(SHORTCUT_NAME_KEY, shortcut.name);
+  window.dispatchEvent(new Event('launchchange'));
+}
+
+let openSettings = () => {}; // set by mountSettings() where settings exist
 
 /**
- * Hand QR content to a saved Shortcuts shortcut on Apple devices, or share
- * the first web link through Android's system share sheet. Hidden elsewhere.
+ * The settings dialog behind the header's gear button. Its only setting is
+ * the shortcut switch, so the button only shows on Apple devices. Changes
+ * apply as they are made.
+ */
+export function mountSettings() {
+  const button = $('#settings-open');
+  const dialog = $('#settings');
+  const toggle = $('#settings-shortcut');
+  const field = $('#settings-shortcut-field');
+  const name = $('#settings-shortcut-name');
+  if (launchPlatform(navigator.userAgent) !== 'apple' || typeof dialog.showModal !== 'function') return;
+
+  openSettings = ({ focusName = false } = {}) => {
+    toggle.checked = shortcut.enabled;
+    name.value = shortcut.name;
+    field.hidden = !shortcut.enabled;
+    dialog.showModal();
+    if (focusName && shortcut.enabled) name.focus();
+  };
+  button.hidden = false;
+  button.addEventListener('click', () => openSettings());
+  toggle.addEventListener('change', () => {
+    field.hidden = !toggle.checked;
+    setShortcut({ enabled: toggle.checked });
+  });
+  name.addEventListener('input', () => setShortcut({ name: name.value.trim() }));
+  // A click on the backdrop lands on the dialog element itself.
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+}
+
+/**
+ * Share the first web link through the system share sheet on Android and
+ * Apple devices, or, when turned on in settings on Apple devices, hand the
+ * whole QR content to a Shortcuts shortcut. Hidden elsewhere.
  * `getPayload()` returns the current { text, bytes } or null.
  */
 export function mountLaunch(root, getPayload) {
@@ -117,6 +176,8 @@ export function mountLaunch(root, getPayload) {
   const platform = launchPlatform(navigator.userAgent);
   let sharing = false;
   let mounted = true;
+
+  const useShortcut = () => platform === 'apple' && shortcut.enabled;
 
   function payloadLink() {
     const p = getPayload();
@@ -134,43 +195,33 @@ export function mountLaunch(root, getPayload) {
 
   function launchUrl() {
     const p = getPayload();
-    if (!p || !shortcutName) return null;
+    if (!p || !shortcut.name) return null;
     const text = payloadText(p.text, p.bytes);
-    return shortcutUrl(shortcutName, text);
+    return shortcutUrl(shortcut.name, text);
   }
 
   function render() {
     const link = payloadLink();
-    share.hidden = platform !== 'android';
+    share.hidden = !platform || useShortcut();
     shareNote.hidden = share.hidden;
     share.disabled = sharing || !canShareLink(link);
-    setText(shareNote, t(typeof navigator.share === 'function' ? 'launch.android.shareNote' : 'launch.android.shareUnsupported'));
-    run.hidden = platform !== 'shortcuts';
-    note.hidden = run.hidden || !shortcutName;
+    setText(shareNote, t(typeof navigator.share === 'function' ? 'launch.shareNote' : 'launch.shareUnsupported'));
+    run.hidden = !useShortcut();
+    note.hidden = run.hidden || !shortcut.name;
     if (run.hidden) return;
-    setText(label, t(`launch.shortcuts.${shortcutName ? 'run' : 'setup'}`));
-    setText(target, shortcutName ? t('launch.shortcuts.target', { name: shortcutName }) : '');
+    setText(label, t(`launch.shortcuts.${shortcut.name ? 'run' : 'setup'}`));
+    setText(target, shortcut.name ? t('launch.shortcuts.target', { name: shortcut.name }) : '');
     run.title = target.textContent;
-    run.disabled = Boolean(shortcutName) && !launchUrl();
+    run.disabled = Boolean(shortcut.name) && !launchUrl();
   }
 
   function editTarget() {
-    const input = window.prompt(t('launch.shortcuts.prompt'), shortcutName);
-    if (input === null) return;
-    const value = input.trim();
-    shortcutName = value;
-    try {
-      if (value) localStorage.setItem(LAUNCH_KEY, value);
-      else localStorage.removeItem(LAUNCH_KEY);
-    } catch {
-      // private mode: the choice lasts until the page is closed
-    }
-    render();
+    openSettings({ focusName: true });
   }
 
   function onRun() {
-    if (platform !== 'shortcuts') return;
-    if (!shortcutName) {
+    if (!useShortcut()) return;
+    if (!shortcut.name) {
       editTarget();
       return;
     }
@@ -181,16 +232,16 @@ export function mountLaunch(root, getPayload) {
 
   async function onShare() {
     const link = payloadLink();
-    if (platform !== 'android' || sharing || !canShareLink(link)) return;
+    if (!platform || useShortcut() || sharing || !canShareLink(link)) return;
     sharing = true;
     render();
     try {
       // Keep this call in the click handler: Web Share requires a user gesture.
-      // Share the URL once; Android supplies it to the selected app as a link.
-      // Web Share cannot preselect an Android package or confirm app delivery.
+      // Share the URL once; the system hands it to the chosen app as a link.
+      // Web Share cannot preselect an app or confirm delivery.
       await navigator.share({ url: link });
     } catch (error) {
-      if (mounted && error?.name !== 'AbortError') toast(t('launch.android.shareFailed'));
+      if (mounted && error?.name !== 'AbortError') toast(t('launch.shareFailed'));
     } finally {
       sharing = false;
       if (mounted) render();
@@ -200,6 +251,7 @@ export function mountLaunch(root, getPayload) {
   run.addEventListener('click', onRun);
   share.addEventListener('click', onShare);
   change.addEventListener('click', editTarget);
+  window.addEventListener('launchchange', render);
   return {
     render,
     unmount() {
@@ -207,6 +259,7 @@ export function mountLaunch(root, getPayload) {
       run.removeEventListener('click', onRun);
       share.removeEventListener('click', onShare);
       change.removeEventListener('click', editTarget);
+      window.removeEventListener('launchchange', render);
     },
   };
 }

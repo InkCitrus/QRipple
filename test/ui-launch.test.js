@@ -7,6 +7,13 @@ class Element extends EventTarget {
   textContent = '';
   hidden = true;
   disabled = false;
+  checked = false;
+  value = '';
+  open = false;
+  focused = false;
+  focus() { this.focused = true; }
+  showModal() { this.open = true; }
+  close() { this.open = false; }
 }
 
 const originalGlobals = Object.fromEntries(
@@ -16,7 +23,21 @@ const stored = new Map([['qripple.launch', 'com.chaoxing.mobile.xuezaixidian']])
 const navigator = { userAgent: 'Mozilla/5.0 (Linux; Android 15) EdgA/130', language: 'zh-CN' };
 let toast;
 let shared;
-const window = { location: { href: 'https://qripple.example/join' }, prompt: () => assert.fail('Android must not prompt for a package') };
+const window = Object.assign(new EventTarget(), { location: { href: 'https://qripple.example/join' } });
+const settings = {
+  button: new Element(),
+  dialog: new Element(),
+  toggle: new Element(),
+  field: new Element(),
+  name: new Element(),
+};
+const bySelector = {
+  '#settings-open': settings.button,
+  '#settings': settings.dialog,
+  '#settings-shortcut': settings.toggle,
+  '#settings-shortcut-field': settings.field,
+  '#settings-shortcut-name': settings.name,
+};
 for (const [name, value] of Object.entries({
   navigator,
   window,
@@ -25,10 +46,10 @@ for (const [name, value] of Object.entries({
     setItem: (key, value) => stored.set(key, value),
     removeItem: (key) => stored.delete(key),
   },
-  document: { querySelector: () => toast },
+  document: { querySelector: (selector) => (selector === '#toast' ? toast : bySelector[selector]) },
 })) Object.defineProperty(globalThis, name, { value, configurable: true });
 
-const { mountLaunch } = await import('../public/js/ui.js');
+const { mountLaunch, mountSettings } = await import('../public/js/ui.js');
 const link = 'https://mobilelearn.chaoxing.com/widget/sign/e?id=example&c=example&enc=EXAMPLE&DB_STRATEGY=PRIMARY_KEY&STRATEGY_PARA=id';
 const payload = (text) => ({ text, bytes: new TextEncoder().encode(text) });
 const settle = () => new Promise(setImmediate);
@@ -65,6 +86,8 @@ after(() => {
 });
 
 test('Android shares the first link exactly once and ignores a previously saved package', async () => {
+  mountSettings();
+  assert.equal(settings.button.hidden, true, 'no settings on Android');
   const ui = mount(`签到 ${link} 另一个 https://example.com/`);
   assert.equal(ui.share.hidden, false);
   assert.equal(ui.share.disabled, false);
@@ -144,7 +167,7 @@ test('missing APIs, rejected data, and non-web payloads cannot start a share', (
   delete navigator.share;
   ui.render();
   assert.equal(ui.share.disabled, true);
-  assert.match(ui.shareNote.textContent, /HTTPS/);
+  assert.match(ui.shareNote.textContent, /无法调起系统分享/);
   assert.deepEqual(shared, []);
   ui.unmount();
 });
@@ -163,26 +186,59 @@ test('unmounting detaches sharing and suppresses feedback from a pending request
   assert.deepEqual(shared, []);
 });
 
-test('Apple devices keep shortcut configuration and pass the full content; desktop hides both actions', () => {
+test('Apple devices share links by default; a shortcut set in settings replaces it and gets the full content', () => {
   navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)';
   const text = `备注\n${link}`;
   const ui = mount(text);
+  assert.equal(ui.share.hidden, false);
+  assert.equal(ui.shareNote.hidden, false);
+  assert.equal(ui.run.hidden, true);
+  ui.share.dispatchEvent(new Event('click'));
+  assert.deepEqual(shared, [{ url: link }]);
+
+  mountSettings();
+  assert.equal(settings.button.hidden, false);
+  settings.button.dispatchEvent(new Event('click'));
+  assert.equal(settings.dialog.open, true);
+  assert.equal(settings.toggle.checked, false, 'off until turned on, even with a name saved earlier');
+  assert.equal(settings.field.hidden, true);
+
+  settings.toggle.checked = true;
+  settings.toggle.dispatchEvent(new Event('change'));
+  assert.equal(settings.field.hidden, false);
+  settings.name.value = '  ';
+  settings.name.dispatchEvent(new Event('input'));
   assert.equal(ui.share.hidden, true);
+  assert.equal(ui.shareNote.hidden, true);
   assert.equal(ui.run.hidden, false);
-  window.prompt = () => '分享给学在西电';
-  // Change the shortcut name through the existing UI action.
-  ui.unmount();
-  const elements = Object.fromEntries(
-    ['run', 'share', 'share-note', 'label', 'note', 'target', 'change'].map((name) => [`.launch-${name}`, new Element()]),
-  );
-  const apple = mountLaunch({ querySelector: (selector) => elements[selector] }, () => payload(text));
-  elements['.launch-change'].dispatchEvent(new Event('click'));
-  elements['.launch-run'].dispatchEvent(new Event('click'));
+  assert.equal(ui.note.hidden, true);
+  settings.dialog.close();
+  ui.run.dispatchEvent(new Event('click'));
+  assert.equal(settings.dialog.open, true, 'running without a name opens settings');
+  assert.equal(settings.name.focused, true);
+
+  settings.name.value = ' 分享给学在西电 ';
+  settings.name.dispatchEvent(new Event('input'));
+  assert.equal(ui.note.hidden, false);
+  assert.equal(stored.get('qripple.shortcut'), '1');
+  assert.equal(stored.get('qripple.launch'), '分享给学在西电');
+  ui.share.dispatchEvent(new Event('click'));
+  ui.run.dispatchEvent(new Event('click'));
+  assert.deepEqual(shared, [{ url: link }], 'the hidden share button does nothing');
   const url = new URL(window.location.href);
   assert.equal(url.protocol, 'shortcuts:');
   assert.equal(url.searchParams.get('name'), '分享给学在西电');
   assert.equal(url.searchParams.get('text'), text);
-  apple.unmount();
+
+  settings.toggle.checked = false;
+  settings.toggle.dispatchEvent(new Event('change'));
+  assert.equal(ui.share.hidden, false);
+  assert.equal(ui.run.hidden, true);
+  assert.equal(ui.note.hidden, true);
+  assert.equal(stored.has('qripple.shortcut'), false);
+  assert.equal(stored.get('qripple.launch'), '分享给学在西电', 'the name is kept for next time');
+  ui.unmount();
+
   navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
   const desktop = mount();
   assert.equal(desktop.share.hidden, true);
