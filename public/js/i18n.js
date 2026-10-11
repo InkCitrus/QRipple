@@ -15,6 +15,7 @@ const messages = {
     'home.fact2': '内容变化时，所有接收者自动同步更新',
     'home.fact3': '临时会话，结束或过期后立即失效，不保存任何记录',
 
+    'common.github': '在 GitHub 上查看源代码',
     'common.privacy': '隐私优先：只传输解码后的数据，不传输图像或视频。',
     'common.home': '返回首页',
     'common.copy': '复制',
@@ -122,6 +123,7 @@ const messages = {
     'home.fact2': 'Every receiver updates automatically when the code changes',
     'home.fact3': 'Temporary sessions: nothing is kept once they end or expire',
 
+    'common.github': 'Source code on GitHub',
     'common.privacy': 'Privacy first: only decoded data is sent, never images or video.',
     'common.home': 'Back to home',
     'common.copy': 'Copy',

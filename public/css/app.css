@@ -111,8 +111,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
   cursor: pointer;
 }
 .topbar-btn:hover { color: var(--text); }
-.settings-toggle { display: inline-grid; place-items: center; min-width: 36px; padding: 0; }
-.settings-toggle svg { width: 18px; height: 18px; }
+.topbar-icon { display: inline-grid; place-items: center; min-width: 36px; padding: 0; }
+.topbar-icon svg { width: 18px; height: 18px; }
+.github-mark { fill: currentColor; stroke: none; }
 
 main {
   flex: 1;
