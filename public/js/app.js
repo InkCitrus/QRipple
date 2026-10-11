@@ -58,7 +58,11 @@ window.addEventListener('popstate', () => {
 
 const langToggle = document.getElementById('lang-toggle');
 function syncLangToggle() {
-  langToggle.textContent = getLang() === 'zh' ? 'EN' : '中文';
+  const zh = getLang() === 'zh';
+  langToggle.textContent = zh ? 'EN' : '中文';
+  // Named in the language it switches to, so readers of either can find it.
+  langToggle.setAttribute('aria-label', zh ? 'Switch to English' : '切换到中文');
+  langToggle.lang = zh ? 'en' : 'zh-CN';
 }
 langToggle.addEventListener('click', () => {
   setLang(getLang() === 'zh' ? 'en' : 'zh');
