@@ -3,9 +3,16 @@
 # Run on the server as root, from a directory holding the deploy/ files:
 #
 #   sudo LINE_NAME=az.qripple.inkorange.com \
-#        LISTEN_HOSTS=127.0.0.1,100.104.161.105 \
-#        PRIMARY=127.0.0.1:3000 BACKUP=100.120.41.10:3000 PEER=100.120.41.10 \
+#        LISTEN_HOSTS=127.0.0.1,100.64.0.1 \
+#        PRIMARY=127.0.0.1:3000 BACKUP=100.64.0.2:3000 PEER=100.64.0.2 \
 #        bash setup-line.sh [--issue-cert]
+#
+# LISTEN_HOSTS: addresses this node's QRipple listens on (local nginx plus its
+#               Tailscale address, so the other node can reach it)
+# PRIMARY/BACKUP: QRipple processes nginx forwards to (backup used when the
+#               primary is down); every line must use the same primary
+# PEER:         the other node's Tailscale address, for ACME challenges that
+#               land on the wrong node
 #
 # Idempotent. The HTTPS server block is only enabled once the certificate
 # exists; run again with --issue-cert after DNS points at the node.

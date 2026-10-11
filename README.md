@@ -2,9 +2,40 @@
 
 **Real-time QR Code Sharing** · *Scan once. Share everywhere.*
 
-QRipple 是一个无需安装、无需注册的实时二维码共享网站。分享者在浏览器中打开摄像头持续扫描二维码，接收者输入五位数字配对码即可实时看到同一个二维码（在本地重新生成）。
+在线使用：<https://qripple.inkorange.com>
 
-**只传输二维码解码后的数据，摄像头画面始终留在分享者设备上。**
+QRipple 是一个无需安装、无需注册的实时二维码共享网站。分享者用手机摄像头对准一个二维码，接收者输入五位数字配对码，就能在自己的设备上实时看到同一个二维码；二维码内容一变，所有接收者都会同步更新。
+
+**只传输二维码解码后的数据，摄像头画面始终留在分享者设备上。** 服务器不保存任何记录，会话结束即消失。
+
+## 使用方法
+
+1. **分享者**：打开网站，点击 *Start Sharing*，允许使用摄像头，把镜头对准要分享的二维码。页面上会显示一个五位配对码。
+2. **接收者**：打开网站，点击 *Join Session*，输入配对码，即可看到同一个二维码（在本地重新生成，可直接扫描）。接收端可以复制内容，或把其中的链接通过系统分享面板交给其他 App。
+3. 分享者点击“结束分享”，或离线超过 2 分钟，会话结束，配对码随即失效。
+
+## 功能
+
+- **本地识别**：在分享者浏览器的 Web Worker 中用 ZXing（WebAssembly）识别，最高约 16 帧/秒；模糊时自动锐化重试，不支持 WebAssembly 时退回 jsQR。
+- **动态二维码**：内容变化后自动推送给所有接收者，适合每隔几秒刷新一次的码。为防止误识别造成闪烁，新内容需连续识别 2 次才会替换。
+- **多个二维码**：画面中同时出现多个码时，在预览上标出编号由分享者点选，之后持续跟随所选的码。大码旁边的小码也能找到。
+- **自动变焦**：摄像头能看到但读不出的小码，会自动放大镜头再识别（需要摄像头支持缩放）。
+- **接收端**：按原始字节重新生成二维码（SVG）；内容中的网址可直接点击；支持复制内容、通过系统分享面板把链接交给其他 App，Apple 设备上还可以改为运行快捷指令（见下文）；会话期间屏幕保持常亮。
+- **断线恢复**：分享者刷新页面会自动回到原会话；接收者断线后自动重连。
+- **多线路接入**：可以为同一个服务器配置多条访问线路，客户端自动选择最先连通的一条（见“部署”）。
+- **中英双语**：按浏览器语言自动选择，可在右上角切换。
+
+## 浏览器要求
+
+- 摄像头只能在 HTTPS（或 `localhost`）页面上使用，所以分享端必须通过 HTTPS 访问。
+- 分享端需要支持摄像头的现代浏览器；手机上推荐 Safari、Chrome 或 Edge。部分手机厂商自带的浏览器和 App 内置浏览器（如微信）可能无法调用摄像头或系统分享。
+- 接收端任何现代浏览器都可以。
+
+## 将链接交给 App
+
+- **Android、iPhone、iPad 和 Mac**：点击内容卡片上的“分享链接”，在系统分享面板中选择目标 App。需要支持系统分享的浏览器（如 Safari、新版 Chrome 或 Edge）；如果目标 App 没有出现在面板中，表示它没有提供接收链接的分享入口。
+- 网页不能预选或记住系统分享的目标，每次都需要在面板中选择 App（部分 Android 系统可以在面板中把常用 App 固定在前面）。
+- **iPhone、iPad 和 Mac**：可以在右上角的设置中打开“使用快捷指令”并填写快捷指令名称。之后内容卡片上的“分享链接”会换成“运行快捷指令”，把完整的二维码内容作为输入交给这个快捷指令。设置只在 Apple 设备上显示。
 
 ## 工作方式
 
@@ -14,10 +45,11 @@ camera → Web Worker(ZXing) 解码 ──► 内存中的临时会话 ──Web
           （图像不出设备）           只保存最新一条数据                  SVG 二维码
 ```
 
-- **分享端**：摄像头帧（1080p）裁剪到取景框，在 Web Worker 中用 [zxing-wasm](https://github.com/Sec-ant/zxing-wasm)（zxing-cpp 的 WebAssembly 版）解码，最高约 16 帧/秒；一帧识别失败时会做一次锐化（反锐化掩模）再识别，提升对失焦模糊的识别率；不支持 WebAssembly 的浏览器自动退回 [jsQR](https://github.com/cozmo/jsQR)。首个二维码识别一次即推送；内容变化需连续识别 2 次才替换，防止误识别导致闪烁；内容未变化不重复发送。识别不到时保留上一次结果，扫描永不停止。
-- **多个二维码**：画面中同时出现多个二维码时不会自动切换，而是在预览上标出编号并列出内容，由分享者点选；之后会持续跟随所选的码（包括原位刷新内容的动态码）。逻辑见 `public/js/code-tracker.js`。
-- **服务器**：单进程 Node.js（依赖仅 `ws`），会话完全存在内存中，不落盘、不记录内容。
-- **接收端**：按原始字节（base64 传输）用 [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 重新编码；纯数字 / 字母数字内容自动使用更紧凑的编码模式。外观可能不同，但承载的数据相同。
+- **分享端**：摄像头帧（1080p）裁剪到取景框后送入 Web Worker 解码（[zxing-wasm](https://github.com/Sec-ant/zxing-wasm)，兜底 [jsQR](https://github.com/cozmo/jsQR)）。首个二维码识别一次即推送；内容未变化不重复发送；识别不到时保留上一次结果，扫描不会停止。
+- **服务器**：单进程 Node.js，唯一的运行时依赖是 `ws`。会话完全存在内存中，不落盘、不记录内容。
+- **接收端**：按原始字节（base64 传输）用 [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 重新编码；纯数字、字母数字内容自动使用更紧凑的编码模式。外观可能与原码不同，但承载的数据相同。
+
+完整的消息格式见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
 
 ## 会话规则
 
@@ -29,16 +61,16 @@ camera → Web Worker(ZXing) 解码 ──► 内存中的临时会话 ──Web
 | 每个会话接收者上限 | 50 | `MAX_RECEIVERS` |
 | 最大数据量 | 8 KiB（可覆盖任何合法二维码） | `MAX_DATA_BYTES` |
 
-分享者刷新页面可自动恢复原会话（令牌保存在 sessionStorage）；接收者断线后自动重连，并通过会话 ID 确保不会误连到复用同一配对码的新会话。
+分享者的会话令牌保存在 sessionStorage 中，刷新页面可恢复原会话；接收者重连时通过会话 ID 确保不会误连到复用同一配对码的新会话。
 
-## 安全措施
+## 安全与隐私
 
+- 摄像头画面只在分享者设备上处理，服务器只收到解码后的数据，并且只保留每个会话的最新一条；会话结束后立即删除。
 - 只有持有分享令牌（创建会话时下发的 192 位随机值）的连接才能更新或结束会话。
 - 按 IP 限制：错误配对码 10 次后限速（每 30 秒恢复 1 次）、创建会话频率、并发连接数；按连接限制消息速率；超大消息直接断开。
-- WebSocket 校验 Origin；页面启用严格 CSP、`Permissions-Policy`、`X-Frame-Options` 等安全响应头。
-- 五位配对码不是强认证：错误猜测会被限流，但任何知道配对码的人都能看到分享内容。
-
-完整的消息格式见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
+- WebSocket 校验 Origin；页面启用严格的 CSP、`Permissions-Policy`、`X-Frame-Options` 等安全响应头。
+- 二维码内容视为不可信数据：只有 http(s) 网址会变成链接，页面不会把内容当作 HTML 插入。
+- **五位配对码不是强认证**：错误猜测会被限流，但任何知道配对码的人都能看到分享内容。不要用它分享付款码、登录码等敏感二维码。
 
 ## 本地开发
 
@@ -47,20 +79,31 @@ camera → Web Worker(ZXing) 解码 ──► 内存中的临时会话 ──Web
 ```bash
 npm install
 npm run dev        # http://localhost:3000，修改服务器代码后自动重启
-npm test           # 服务器单元测试与集成测试
+npm test           # 单元测试与集成测试（node:test）
 ```
 
-浏览器只允许在 HTTPS 或 `localhost` 下使用摄像头。要用手机测试，需要部署到带 HTTPS 的地址。
+前端是原生 ES 模块，没有构建步骤，修改后刷新页面即可。浏览器只允许在 HTTPS 或 `localhost` 下使用摄像头，要用手机测试需要部署到带 HTTPS 的地址。
 
-## 将链接交给 App
+## 部署
 
-- Android、iPhone、iPad 和 Mac：点击内容卡片上的“分享链接”，在系统分享面板中选择目标 App。需要支持系统分享的浏览器（如 Safari、新版 Chrome 或 Edge）及 HTTPS；如果目标 App 没有出现在面板中，表示它没有提供兼容的分享入口。
-- 浏览器不能预选系统分享目标，需要在分享面板中选择 App。
-- iPhone、iPad 和 Mac：可以在右上角的设置中打开“使用快捷指令”并填写快捷指令名称，内容卡片上的“分享链接”会换成“运行快捷指令”，把完整的二维码内容传给快捷指令。设置只在 Apple 设备上显示。
+服务器只需要 Node.js ≥ 22，前面放一个负责 HTTPS 的反向代理（WebSocket 路径为 `/ws`，健康检查为 `/healthz`）。最简单的运行方式：
 
-## 部署（多线接入）
+```bash
+npm ci --omit=dev
+HOST=127.0.0.1 PORT=3000 TRUST_PROXY=1 node server/index.js
+```
 
-生产环境：<https://qripple.inkorange.com>，两台东京服务器，分别走两条不同的网络线路：
+`deploy/` 目录提供了两种在 Ubuntu 24.04 上部署的脚本，都会安装校验过的 Node.js 官方二进制和一个加固过的 systemd 服务（`deploy/qripple.service`）。
+
+### 单台服务器（Caddy）
+
+1. 把 `deploy/Caddyfile` 中的域名改成你自己的，并把域名解析到服务器。
+2. 把 `deploy/` 复制到服务器，执行 `sudo bash deploy/setup-server.sh`（安装 Node.js、Caddy、systemd 服务和 ufw 规则）。
+3. 在本地执行 `deploy/deploy.sh <ssh 主机名>` 发布代码（先跑测试，再 rsync、`npm ci`、重启服务），然后在服务器上 `systemctl reload caddy`。Caddy 会自动申请和续期证书。
+
+### 多线路（nginx + Tailscale）
+
+在部分地区，单条网络线路的连通性不稳定。多线路部署让多台位于不同网络的服务器共同提供服务，客户端同时尝试各条线路，用最先连通的一条。在线实例的部署方式如下：
 
 ```
                     ┌─ tk.qripple.inkorange.com ─► vps-tk    (UCloud)    nginx ─┐
@@ -69,33 +112,65 @@ npm test           # 服务器单元测试与集成测试
 页面 qripple.inkorange.com：两条 A 记录，分别指向两台服务器
 ```
 
-- **线路竞速**：客户端从 `/lines.json` 拿到线路列表，优先连上次成功的线路；0.6 秒内没连上就并行尝试下一条，谁先连上用谁。连接断开后重连时，刚断开的线路排在最后。逻辑见 `public/js/connection.js`。
-- **会话一致**：两条线路都转发到同一个 QRipple 主进程，分享者和接收者走不同线路也在同一会话里。主进程不可达时，两边的 nginx 自动切到备用进程。
-- **配置**（`/etc/qripple/qripple.env`，由 `deploy/setup-line.sh` 生成）：`HOST`（监听地址，可多个）、`ACCESS_LINES`（线路主机名）、`ALLOWED_ORIGINS`、`TRUST_PROXY`。
-- **证书**：每台服务器用 certbot（webroot）申请 `qripple.inkorange.com` + 自己的线路域名。主域名同时解析到两台服务器，所以 ACME 验证请求若落到另一台，会通过 Tailscale 转给申请方。
+- **线路竞速**：客户端从 `/lines.json` 拿到线路列表，优先连上次成功的线路；0.6 秒内没连上就并行尝试下一条，谁先连上用谁。重连时刚断开的线路排在最后。逻辑见 `public/js/connection.js`。
+- **会话一致**：所有线路都转发到同一个 QRipple 主进程（跨服务器时经由 Tailscale），所以分享者和接收者走不同线路也在同一会话里。主进程不可达时，nginx 自动切到备用进程。会话只存在主进程内存中，主进程重启会结束进行中的会话。
+- **证书**：每台服务器用 certbot（webroot）申请主域名和自己的线路域名。主域名解析到所有服务器，ACME 验证请求若落到另一台，会通过 Tailscale 转给申请方。
+- **初始化一条线路**：把 `deploy/` 复制到服务器后执行 `deploy/setup-line.sh`（参数见脚本开头）；DNS 生效后加 `--issue-cert` 再执行一次即启用 HTTPS。生成的配置在 `/etc/qripple/qripple.env`。
+- **发布**：`deploy/deploy.sh [ssh 主机名 ...]`（不带参数时发布到在线实例的 `vps-azure` 和 `vps-tk`）。
 
-操作：
+### 配置项
 
-- 初始化/更新一条线路：把 `deploy/` 复制到服务器后执行 `deploy/setup-line.sh`（参数见脚本开头）；DNS 生效后加 `--issue-cert` 再执行一次即启用 HTTPS
-- 发布新版本：`deploy/deploy.sh`（默认发布到 `vps-azure` 和 `vps-tk`；先跑测试，再 rsync + `npm ci` + 重启服务）
-- 查看日志：`ssh vps-azure journalctl -u qripple -f`
+所有配置都通过环境变量设置（见 `server/config.js`）：
 
-会话状态只在主进程内存中：主进程重启会结束进行中的会话（客户端会提示会话已失效）。旧的单机部署方式（Caddy）保留在 `deploy/setup-server.sh` / `deploy/Caddyfile`。
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `HOST` | `0.0.0.0` | 监听地址，可用逗号分隔多个 |
+| `PORT` | `3000` | 监听端口 |
+| `TRUST_PROXY` | `0` | 信任几层反向代理的 `X-Forwarded-For`（用于按 IP 限流）；放在一层反向代理后面时设为 `1` |
+| `ALLOWED_ORIGINS` | 空 | 除页面自身域名外，额外允许的 WebSocket Origin（逗号分隔） |
+| `ACCESS_LINES` | 空 | 多线路部署时的线路域名（逗号分隔）；为空时客户端只连接页面自身的域名 |
+| `SESSION_TTL_MS` / `HOST_GRACE_MS` / `CODE_COOLDOWN_MS` | 24 小时 / 2 分钟 / 10 分钟 | 见“会话规则” |
+| `MAX_SESSIONS` / `MAX_RECEIVERS` | `2000` / `50` | 同时存在的会话数、每个会话的接收者数上限 |
+| `MAX_DATA_BYTES` / `MAX_MESSAGE_BYTES` | `8192` / `49152` | 单条二维码数据、单条 WebSocket 消息的大小上限 |
+| `MAX_CONNECTIONS_PER_IP` | `20` | 每个 IP 的并发连接数上限 |
+| `CREATE_BURST` / `CREATE_REFILL_MS` | `10` / `60000` | 每个 IP 创建会话的令牌桶 |
+| `JOIN_FAIL_BURST` / `JOIN_FAIL_REFILL_MS` | `10` / `30000` | 每个 IP 输错配对码的令牌桶 |
+| `MESSAGE_BURST` / `MESSAGE_REFILL_MS` | `40` / `50` | 每个连接的消息速率 |
+| `HEARTBEAT_MS` / `SWEEP_MS` | `30000` / `5000` | WebSocket 心跳间隔、过期会话清理间隔 |
 
 ## 项目结构
 
 ```
-server/        Node.js 服务器：HTTP 静态文件、WebSocket 协议、会话存储、限流
-public/        浏览器端（原生 ES 模块，无构建步骤）
-  js/scanner.js      摄像头与取景框裁剪
-  js/scan-worker.js  Web Worker 中的二维码解码（ZXing WASM，jsQR 兜底）
-  js/qr-render.js    接收端重新生成二维码（SVG）
+server/
+  index.js           入口：启动服务器，处理退出信号
+  app.js             HTTP 服务、WebSocket 升级与 Origin 校验、/lines.json、/healthz
+  hub.js             WebSocket 协议（分享者 / 接收者消息处理）
+  sessions.js        内存中的会话存储与配对码分配
+  ratelimit.js       令牌桶限流
+  static.js          静态文件服务（内存缓存 + gzip）与安全响应头
+  config.js          环境变量配置
+public/              浏览器端（原生 ES 模块，无构建步骤）
+  js/app.js          前端路由
   js/share.js        分享页
   js/join.js         接收页
-test/          node:test 测试
-deploy/        Caddyfile、systemd 单元、服务器初始化与发布脚本
+  js/scanner.js      摄像头、取景框裁剪与自动变焦
+  js/scan-worker.js  Web Worker 中的二维码解码（ZXing WASM，jsQR 兜底）
+  js/code-tracker.js 多个二维码时决定分享哪一个
+  js/auto-zoom.js    自动变焦的判断逻辑
+  js/qr-render.js    接收端重新生成二维码（SVG）
+  js/connection.js   WebSocket 连接、多线路竞速与自动重连
+  js/linkify.js      识别内容中的网址
+  js/launch.js       系统分享与快捷指令
+  js/i18n.js         中英文文案
+docs/PROTOCOL.md     WebSocket 消息格式
+deploy/              部署脚本、systemd 单元、Caddy / nginx 配置
+test/                node:test 测试
 ```
+
+## 参与贡献
+
+欢迎提交 issue 和 pull request。提交前请运行 `npm test`；纯逻辑模块（如 `code-tracker.js`、`linkify.js`）都有对应的单元测试，修改时请一并更新。
 
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)
