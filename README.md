@@ -88,26 +88,59 @@ npm test           # 单元测试与集成测试（node:test）
 
 ## 部署
 
-服务器只需要 Node.js ≥ 22，前面放一个负责 HTTPS 的反向代理（WebSocket 路径为 `/ws`，健康检查为 `/healthz`）。最简单的运行方式：
+推荐的方式是用 `deploy/` 里的脚本部署到一台 Ubuntu 服务器：脚本会安装校验过的 Node.js 官方二进制、Caddy（自动申请 HTTPS 证书）和一个加固过的 systemd 服务。
 
-```bash
-npm ci --omit=dev
-HOST=127.0.0.1 PORT=3000 TRUST_PROXY=1 node server/index.js
-```
+### 准备
 
-`deploy/` 目录提供了两种在 Ubuntu 24.04（x86_64 或 ARM64）上部署的脚本，都会安装校验过的 Node.js 官方二进制和一个加固过的 systemd 服务（`deploy/qripple.service`）。发布脚本 `deploy/deploy.sh` 在本地运行，需要本地有 Node.js（先跑测试）和 rsync，并且 SSH 用户是 root 或能免密码 sudo。
+- 一台 **Ubuntu 24.04** 服务器（x86_64 或 ARM64），能通过 SSH 登录，登录用户是 root 或能免密码 sudo。
+- 一个**域名**，A 记录（有 IPv6 的话还有 AAAA 记录）指向这台服务器。
+- 在云服务商的防火墙/安全组中放行 **80 和 443 端口**（TCP；如需 HTTP/3，再放行 443/UDP）。
+- 本地电脑装有 **Node.js ≥ 22**、git 和 rsync（macOS 和大多数 Linux 自带 rsync）。
 
 > 中国大陆的服务器需要域名完成 ICP 备案，才能在 80/443 端口上提供网站。
 
-### 单台服务器（Caddy）
+### 部署步骤
 
-1. 把域名解析到服务器，并在云服务商的防火墙/安全组中放行 80 和 443 端口。
-2. 把 `deploy/` 复制到服务器，执行 `sudo DOMAIN=你的域名 bash deploy/setup-server.sh`（安装 Node.js、Caddy、systemd 服务；装有 ufw 时添加放行规则）。Caddy 会自动申请和续期证书。
-3. 在本地执行 `deploy/deploy.sh <ssh 主机名>` 发布代码（先跑测试，再 rsync、`npm ci`、重启服务）。之后发布新版本也是这一步。
+以下命令都在本地电脑上执行。把 `myserver` 换成你的 SSH 地址（如 `root@203.0.113.10`，或 `~/.ssh/config` 中的别名），把 `qr.example.com` 换成你的域名。
 
-### 多线路（nginx + Tailscale）
+```bash
+# 1. 获取代码并安装依赖（发布前会在本地运行测试）
+git clone https://github.com/InkCitrus/QRipple.git
+cd QRipple
+npm install
 
-在部分地区，单条网络线路的连通性不稳定。多线路部署让多台位于不同网络的服务器共同提供服务，客户端同时尝试各条线路，用最先连通的一条。在线实例的部署方式如下：
+# 2. 初始化服务器：安装 Node.js、Caddy 和 systemd 服务，申请 HTTPS 证书
+ssh myserver 'mkdir -p qripple-deploy'
+scp deploy/* myserver:qripple-deploy/
+ssh -t myserver 'sudo DOMAIN=qr.example.com bash qripple-deploy/setup-server.sh'
+
+# 3. 发布代码并启动服务（先运行测试，再上传、安装依赖、重启服务）
+deploy/deploy.sh myserver
+```
+
+完成后打开 `https://qr.example.com` 即可使用。也可以用 `curl https://qr.example.com/healthz` 检查，正常时返回 `ok`。证书通常在一分钟内申请好。
+
+### 日常维护
+
+| 操作 | 命令 |
+| --- | --- |
+| 发布新版本 | `git pull && deploy/deploy.sh myserver` |
+| 查看日志 | `ssh myserver journalctl -u qripple -f` |
+| 重启服务 | `ssh myserver sudo systemctl restart qripple` |
+| 修改配置 | 在服务器上把环境变量（见下方“配置项”）写入 `/etc/qripple/qripple.env`（没有就新建，每行一个 `名称=值`），再重启服务 |
+| 升级 Node.js | 重新执行第 2 步，并在 `sudo` 后加上 `NODE_VERSION=v24.x.y`，然后 `deploy/deploy.sh myserver` |
+
+重启服务会结束进行中的会话（会话只存在内存中）。
+
+**常见问题**
+
+- **打不开网站或证书申请失败**：确认域名已解析到服务器、80/443 端口已放行，然后查看 Caddy 日志：`ssh myserver journalctl -u caddy -n 50`。
+- **发布时提示 sudo 需要密码**：`deploy.sh` 不能输入密码。请用 root 登录，或为该用户配置免密码 sudo。
+- **摄像头无法使用**：必须通过 HTTPS 访问页面。
+
+### 多线路部署（nginx + Tailscale）
+
+在部分地区，单条网络线路的连通性不稳定。多线路部署让多台位于不同网络的服务器共同提供服务，客户端同时尝试各条线路，用最先连通的一条。这种方式更复杂，一般用上面的单台服务器部署就够了。在线实例的部署方式如下：
 
 ```
                     ┌─ tk.qripple.inkorange.com ─► vps-tk    (UCloud)    nginx ─┐
@@ -119,8 +152,17 @@ HOST=127.0.0.1 PORT=3000 TRUST_PROXY=1 node server/index.js
 - **线路竞速**：客户端从 `/lines.json` 拿到线路列表，优先连上次成功的线路；0.6 秒内没连上就并行尝试下一条，谁先连上用谁。重连时刚断开的线路排在最后。逻辑见 `public/js/connection.js`。
 - **会话一致**：所有线路都转发到同一个 QRipple 主进程（跨服务器时经由 Tailscale），所以分享者和接收者走不同线路也在同一会话里。主进程不可达时，nginx 自动切到备用进程。会话只存在主进程内存中，主进程重启会结束进行中的会话。
 - **证书**：每台服务器用 certbot（webroot）申请主域名和自己的线路域名。主域名解析到所有服务器，ACME 验证请求若落到另一台，会通过 Tailscale 转给申请方。
-- **初始化一条线路**：各服务器先加入同一个 Tailscale 网络。把 `deploy/` 复制到服务器后执行 `deploy/setup-line.sh`，用环境变量指定主域名、所有线路域名、本线路域名、监听地址、主/备进程和对端地址（说明见脚本开头）；DNS 生效后加 `--issue-cert` 再执行一次即启用 HTTPS。脚本只在 nginx 中添加一个 `qripple` 站点，可以和其他网站共用服务器。生成的配置在 `/etc/qripple/qripple.env`。
-- **发布**：`deploy/deploy.sh [ssh 主机名 ...]`（不带参数时发布到在线实例的 `vps-azure` 和 `vps-tk`）。
+- **初始化一条线路**：各服务器先加入同一个 Tailscale 网络。像上面第 2 步一样把 `deploy/` 复制到服务器，执行 `setup-line.sh`，用环境变量指定主域名、所有线路域名、本线路域名、监听地址、主/备进程和对端地址（说明和示例见脚本开头）；DNS 生效后加 `--issue-cert` 再执行一次即启用 HTTPS。脚本只在 nginx 中添加一个 `qripple` 站点，可以和其他网站共用服务器。生成的配置在 `/etc/qripple/qripple.env`。
+- **发布**：`deploy/deploy.sh 服务器1 服务器2 ...`（不带参数时发布到在线实例的 `vps-azure` 和 `vps-tk`）。
+
+### 其他环境
+
+QRipple 只需要 Node.js ≥ 22，也可以放在已有的反向代理后面手动运行。反向代理需要负责 HTTPS，并支持 WebSocket（路径为 `/ws`；健康检查为 `/healthz`）：
+
+```bash
+npm ci --omit=dev
+HOST=127.0.0.1 PORT=3000 TRUST_PROXY=1 node server/index.js
+```
 
 ### 配置项
 

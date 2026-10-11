@@ -88,26 +88,59 @@ The front end is plain ES modules with no build step; reload the page to see cha
 
 ## Deployment
 
-The server only needs Node.js 22 or later behind a reverse proxy that handles HTTPS (WebSocket path `/ws`, health check `/healthz`). The simplest way to run it:
+The recommended way is to deploy to an Ubuntu server with the scripts in `deploy/`. They install a checksum-verified official Node.js build, Caddy (which gets the HTTPS certificate automatically) and a locked-down systemd service.
 
-```bash
-npm ci --omit=dev
-HOST=127.0.0.1 PORT=3000 TRUST_PROXY=1 node server/index.js
-```
+### Requirements
 
-`deploy/` has scripts for two setups on Ubuntu 24.04 (x86_64 or ARM64). Both install a checksum-verified official Node.js build and a locked-down systemd service (`deploy/qripple.service`). The release script, `deploy/deploy.sh`, runs on your computer: it needs Node.js (it runs the tests first) and rsync locally, and an SSH user that is root or can sudo without a password.
+- An **Ubuntu 24.04** server (x86_64 or ARM64) you can reach over SSH as root or as a user that can sudo without a password.
+- A **domain** whose A record (and AAAA record, if the server has IPv6) points at the server.
+- **Ports 80 and 443** open in your cloud provider's firewall or security group (TCP; also 443/UDP for HTTP/3).
+- **Node.js 22 or later**, git and rsync on your computer (macOS and most Linux distributions include rsync).
 
 > Servers in mainland China can only serve websites on ports 80/443 for domains with an ICP filing.
 
-### Single server (Caddy)
+### Steps
 
-1. Point your domain at the server and allow ports 80 and 443 in your cloud provider's firewall or security group.
-2. Copy `deploy/` to the server and run `sudo DOMAIN=your.domain bash deploy/setup-server.sh`. It installs Node.js, Caddy and the systemd service, and adds ufw rules if ufw is installed. Caddy obtains and renews the certificate automatically.
-3. From your computer, run `deploy/deploy.sh <ssh-host>` to ship the code (tests, then rsync, `npm ci` and a service restart). Run the same command to release new versions.
+Run these commands on your computer. Replace `myserver` with your SSH destination (such as `root@203.0.113.10`, or an alias from `~/.ssh/config`) and `qr.example.com` with your domain.
+
+```bash
+# 1. Get the code and install dependencies (releases run the tests locally first)
+git clone https://github.com/InkCitrus/QRipple.git
+cd QRipple
+npm install
+
+# 2. Set up the server: Node.js, Caddy and the systemd service, plus the HTTPS certificate
+ssh myserver 'mkdir -p qripple-deploy'
+scp deploy/* myserver:qripple-deploy/
+ssh -t myserver 'sudo DOMAIN=qr.example.com bash qripple-deploy/setup-server.sh'
+
+# 3. Ship the code and start the service (tests, upload, install dependencies, restart)
+deploy/deploy.sh myserver
+```
+
+Then open `https://qr.example.com`. To check from the command line, `curl https://qr.example.com/healthz` prints `ok`. The certificate is usually ready within a minute.
+
+### Maintenance
+
+| Task | Command |
+| --- | --- |
+| Release a new version | `git pull && deploy/deploy.sh myserver` |
+| Follow the logs | `ssh myserver journalctl -u qripple -f` |
+| Restart the service | `ssh myserver sudo systemctl restart qripple` |
+| Change settings | On the server, put environment variables (see Configuration below) in `/etc/qripple/qripple.env` (create it if needed, one `NAME=value` per line), then restart the service |
+| Upgrade Node.js | Repeat step 2 with `NODE_VERSION=v24.x.y` added after `sudo`, then run `deploy/deploy.sh myserver` |
+
+Restarting the service ends the sessions in progress (they only live in memory).
+
+**Troubleshooting**
+
+- **The site doesn't load, or there's no certificate**: check that the domain points at the server and ports 80/443 are open, then read Caddy's log: `ssh myserver journalctl -u caddy -n 50`.
+- **Releasing asks for a sudo password**: `deploy.sh` can't type one. Log in as root, or let the user sudo without a password.
+- **The camera doesn't work**: the page must be opened over HTTPS.
 
 ### Multiple access lines (nginx + Tailscale)
 
-In some regions a single network route isn't reliable. A multi-line deployment serves the site from several servers on different networks; clients try the lines in parallel and use whichever connects first. The hosted instance is set up like this:
+In some regions a single network route isn't reliable. A multi-line deployment serves the site from several servers on different networks; clients try the lines in parallel and use whichever connects first. It is more involved, and the single-server setup above is usually enough. The hosted instance is set up like this:
 
 ```
                       ┌─ tk.qripple.inkorange.com ─► vps-tk    (UCloud)    nginx ─┐
@@ -119,8 +152,17 @@ page qripple.inkorange.com: two A records, one per server
 - **Racing lines**: clients get the line list from `/lines.json` and try the last line that worked first. If it hasn't connected within 0.6 seconds, the next line is tried in parallel, and the first to connect wins. On reconnect, the line that just dropped goes last. See `public/js/connection.js`.
 - **One session across lines**: every line forwards to the same primary QRipple process (over Tailscale when it is on another server), so a sharer and a receiver on different lines still meet in one session. If the primary is unreachable, nginx switches to the backup. Sessions live only in the primary's memory, so restarting it ends the sessions in progress.
 - **Certificates**: each server uses certbot (webroot) for the main domain plus its own line's domain. The main domain resolves to every server, so an ACME challenge that lands on the other server is forwarded to the requesting one over Tailscale.
-- **Setting up a line**: first join every server to the same Tailscale network. Copy `deploy/` to the server and run `deploy/setup-line.sh`, with environment variables for the main domain, all line domains, this line's domain, the listen addresses, the primary and backup processes, and the peer address (explained at the top of the script). Once DNS points at the server, run it again with `--issue-cert` to enable HTTPS. The script only adds a `qripple` site to nginx, so the server can host other sites too. The resulting settings are in `/etc/qripple/qripple.env`.
-- **Releasing**: `deploy/deploy.sh [ssh-host ...]` (with no arguments it releases to the hosted instance's `vps-azure` and `vps-tk`).
+- **Setting up a line**: first join every server to the same Tailscale network. Copy `deploy/` to the server as in step 2 and run `setup-line.sh`, with environment variables for the main domain, all line domains, this line's domain, the listen addresses, the primary and backup processes, and the peer address (explained, with an example, at the top of the script). Once DNS points at the server, run it again with `--issue-cert` to enable HTTPS. The script only adds a `qripple` site to nginx, so the server can host other sites too. The resulting settings are in `/etc/qripple/qripple.env`.
+- **Releasing**: `deploy/deploy.sh server1 server2 ...` (with no arguments it releases to the hosted instance's `vps-azure` and `vps-tk`).
+
+### Other environments
+
+QRipple only needs Node.js 22 or later, so it can also run by hand behind an existing reverse proxy. The proxy must handle HTTPS and pass WebSocket connections through (path `/ws`; health check `/healthz`):
+
+```bash
+npm ci --omit=dev
+HOST=127.0.0.1 PORT=3000 TRUST_PROXY=1 node server/index.js
+```
 
 ### Configuration
 
