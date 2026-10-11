@@ -1,12 +1,13 @@
-// Helpers for handing QR content to a Shortcuts shortcut on Apple devices,
-// or sharing the first web link through Android's system share sheet.
+// Helpers for sharing the first web link through the system share sheet, or
+// (on Apple devices, when turned on in settings) handing QR content to a
+// Shortcuts shortcut.
 
 import { linkSegments } from './linkify.js';
 
-/** 'android', 'shortcuts' (Apple devices; an iPad may report itself as a Mac) or null. */
+/** 'android', 'apple' (an iPad may report itself as a Mac) or null. */
 export function launchPlatform(userAgent) {
   if (/Android/.test(userAgent)) return 'android';
-  if (/iPhone|iPad|iPod|Macintosh/.test(userAgent)) return 'shortcuts';
+  if (/iPhone|iPad|iPod|Macintosh/.test(userAgent)) return 'apple';
   return null;
 }
 

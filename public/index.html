@@ -25,7 +25,12 @@
       </svg>
       <span>QRipple</span>
     </a>
-    <button type="button" class="lang-toggle" id="lang-toggle" aria-label="Switch language">EN</button>
+    <div class="topbar-actions">
+      <button type="button" class="topbar-btn settings-toggle" id="settings-open" hidden data-i18n-attr="aria-label:settings.open;title:settings.open">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <button type="button" class="topbar-btn" id="lang-toggle" aria-label="Switch language">EN</button>
+    </div>
   </header>
 
   <main id="app">
@@ -105,7 +110,7 @@
             </button>
             <button type="button" class="btn btn-secondary btn-small launch-share" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
-              <span data-i18n="launch.android.share"></span>
+              <span data-i18n="launch.share"></span>
             </button>
             <button type="button" class="btn btn-secondary btn-small launch-run" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M8 10H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>
@@ -175,7 +180,7 @@
             </button>
             <button type="button" class="btn btn-secondary launch-share" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
-              <span data-i18n="launch.android.share"></span>
+              <span data-i18n="launch.share"></span>
             </button>
             <button type="button" class="btn btn-secondary launch-run" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M8 10H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>
@@ -203,6 +208,25 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <dialog class="settings" id="settings" aria-labelledby="settings-title">
+    <form method="dialog" class="settings-form">
+      <h2 id="settings-title" data-i18n="settings.title"></h2>
+      <label class="switch-row">
+        <span class="switch-text">
+          <span class="switch-title" data-i18n="settings.shortcut"></span>
+          <span class="settings-hint" data-i18n="settings.shortcutDesc"></span>
+        </span>
+        <input type="checkbox" class="switch" id="settings-shortcut" role="switch">
+      </label>
+      <div class="settings-field" id="settings-shortcut-field" hidden>
+        <label class="card-label" for="settings-shortcut-name" data-i18n="settings.shortcutName"></label>
+        <input type="text" class="text-input" id="settings-shortcut-name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+        <p class="settings-hint" data-i18n="settings.shortcutNameHint"></p>
+      </div>
+      <button class="btn btn-primary btn-block" data-i18n="settings.done"></button>
+    </form>
+  </dialog>
 
   <footer class="footer">
     <span data-i18n="common.privacy"></span>

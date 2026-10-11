@@ -3,6 +3,7 @@
 import { applyI18n, getLang, setLang } from './i18n.js';
 import { mountShare } from './share.js';
 import { mountJoin } from './join.js';
+import { mountSettings } from './ui.js';
 
 const routes = {
   '/': { view: 'home' },
@@ -66,4 +67,5 @@ langToggle.addEventListener('click', () => {
 
 applyI18n();
 syncLangToggle();
+mountSettings();
 render(true);
