@@ -88,7 +88,7 @@ after(() => {
 test('Android shares the first link exactly once and ignores a previously saved package', async () => {
   mountSettings();
   assert.equal(settings.button.hidden, true, 'no settings on Android');
-  const ui = mount(`活动 ${link} 另一个 https://example.org/`);
+  const ui = mount(`活动 ${link} 另一个 https://example.com/`);
   assert.equal(ui.share.hidden, false);
   assert.equal(ui.share.disabled, false);
   assert.equal(ui.run.hidden, true);
