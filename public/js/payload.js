@@ -32,6 +32,12 @@ export function describe(text, bytes) {
   return { text: bytes.length > 96 ? `${hex} …` : hex, binary: true, fullHex: () => toHex(bytes) };
 }
 
+/** The payload as text to copy or pass on: the text, or full hex for binary data. */
+export function payloadText(text, bytes) {
+  const shown = describe(text, bytes);
+  return shown.binary ? shown.fullHex() : shown.text;
+}
+
 function toHex(bytes) {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
