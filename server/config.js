@@ -17,7 +17,7 @@ function list(env, name) {
 export function loadConfig(env = process.env) {
   return {
     port: int(env, 'PORT', 3000),
-    // One or more addresses to listen on, e.g. "127.0.0.1,100.104.161.105"
+    // One or more addresses to listen on, e.g. "127.0.0.1,100.64.0.1"
     // (local reverse proxy plus the Tailscale address peers proxy to).
     hosts: list(env, 'HOST').length ? list(env, 'HOST') : ['0.0.0.0'],
 

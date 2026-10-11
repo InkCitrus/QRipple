@@ -19,7 +19,7 @@ class Element extends EventTarget {
 const originalGlobals = Object.fromEntries(
   ['navigator', 'localStorage', 'document', 'window'].map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]),
 );
-const stored = new Map([['qripple.launch', 'com.chaoxing.mobile.xuezaixidian']]);
+const stored = new Map([['qripple.launch', 'org.mozilla.firefox']]);
 const navigator = { userAgent: 'Mozilla/5.0 (Linux; Android 15) EdgA/130', language: 'zh-CN' };
 let toast;
 let shared;
@@ -50,7 +50,7 @@ for (const [name, value] of Object.entries({
 })) Object.defineProperty(globalThis, name, { value, configurable: true });
 
 const { mountLaunch, mountSettings } = await import('../public/js/ui.js');
-const link = 'https://mobilelearn.chaoxing.com/widget/sign/e?id=example&c=example&enc=EXAMPLE&DB_STRATEGY=PRIMARY_KEY&STRATEGY_PARA=id';
+const link = 'https://example.com/event/check-in?id=123&code=EXAMPLE&next=%2Fdone';
 const payload = (text) => ({ text, bytes: new TextEncoder().encode(text) });
 const settle = () => new Promise(setImmediate);
 
@@ -88,7 +88,7 @@ after(() => {
 test('Android shares the first link exactly once and ignores a previously saved package', async () => {
   mountSettings();
   assert.equal(settings.button.hidden, true, 'no settings on Android');
-  const ui = mount(`签到 ${link} 另一个 https://example.com/`);
+  const ui = mount(`活动 ${link} 另一个 https://example.com/`);
   assert.equal(ui.share.hidden, false);
   assert.equal(ui.share.disabled, false);
   assert.equal(ui.run.hidden, true);
@@ -217,17 +217,17 @@ test('Apple devices share links by default; a shortcut set in settings replaces 
   assert.equal(settings.dialog.open, true, 'running without a name opens settings');
   assert.equal(settings.name.focused, true);
 
-  settings.name.value = ' 分享给学在西电 ';
+  settings.name.value = ' 发送到备忘录 ';
   settings.name.dispatchEvent(new Event('input'));
   assert.equal(ui.note.hidden, false);
   assert.equal(stored.get('qripple.shortcut'), '1');
-  assert.equal(stored.get('qripple.launch'), '分享给学在西电');
+  assert.equal(stored.get('qripple.launch'), '发送到备忘录');
   ui.share.dispatchEvent(new Event('click'));
   ui.run.dispatchEvent(new Event('click'));
   assert.deepEqual(shared, [{ url: link }], 'the hidden share button does nothing');
   const url = new URL(window.location.href);
   assert.equal(url.protocol, 'shortcuts:');
-  assert.equal(url.searchParams.get('name'), '分享给学在西电');
+  assert.equal(url.searchParams.get('name'), '发送到备忘录');
   assert.equal(url.searchParams.get('text'), text);
 
   settings.toggle.checked = false;
@@ -236,7 +236,7 @@ test('Apple devices share links by default; a shortcut set in settings replaces 
   assert.equal(ui.run.hidden, true);
   assert.equal(ui.note.hidden, true);
   assert.equal(stored.has('qripple.shortcut'), false);
-  assert.equal(stored.get('qripple.launch'), '分享给学在西电', 'the name is kept for next time');
+  assert.equal(stored.get('qripple.launch'), '发送到备忘录', 'the name is kept for next time');
   ui.unmount();
 
   navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';

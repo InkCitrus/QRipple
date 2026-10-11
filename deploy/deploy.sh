@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Ship the current checkout to the servers and restart the service.
-#   deploy/deploy.sh [ssh-host ...]      (default: vps-azure vps-tk)
+#   deploy/deploy.sh [ssh-host ...]      (default: vps-azure vps-tk, the hosted instance)
+# Each server must already be set up with setup-server.sh or setup-line.sh, and
+# the SSH user must be root or able to sudo without a password. Needs Node.js
+# (for the tests) and rsync on this computer.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
