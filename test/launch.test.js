@@ -1,19 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appIntentUrl, firstLink, isPackageName, launchPlatform, shortcutUrl } from '../public/js/launch.js';
-
-// How Android's Intent.parseUri reads an intent URL: the intent part starts at the last "#".
-function parseIntent(uri) {
-  const i = uri.lastIndexOf('#');
-  const fields = Object.fromEntries(
-    uri
-      .slice(i + '#Intent;'.length)
-      .split(';')
-      .filter((f) => f && f !== 'end')
-      .map((f) => f.split('=')),
-  );
-  return { data: `${fields.scheme}:${uri.slice('intent:'.length, i)}`, ...fields };
-}
+import { firstLink, launchPlatform, shortcutUrl } from '../public/js/launch.js';
 
 test('shortcut URL carries the name and the text as input', () => {
   assert.equal(shortcutUrl('Send', 'hello'), 'shortcuts://run-shortcut?name=Send&input=text&text=hello');
@@ -26,38 +13,6 @@ test('shortcut names and text are fully encoded', () => {
   assert.equal(url.searchParams.get('text'), '第一行\nhttps://a.cn/x?y=1&z=2#frag +%');
   assert.equal(url.hash, '');
   assert.ok(!url.search.includes('+'), 'spaces are %20, not +');
-});
-
-test('intent URL opens the link in the given package', () => {
-  const uri = appIntentUrl('https://example.com/a/b?q=1&r=2', 'org.mozilla.firefox');
-  assert.equal(uri, 'intent://example.com/a/b?q=1&r=2#Intent;scheme=https;package=org.mozilla.firefox;end');
-  assert.deepEqual(parseIntent(uri), {
-    data: 'https://example.com/a/b?q=1&r=2',
-    scheme: 'https',
-    package: 'org.mozilla.firefox',
-  });
-  assert.equal(parseIntent(appIntentUrl('http://x.cn:8080/p', 'com.a.b')).data, 'http://x.cn:8080/p');
-});
-
-test('a fragment, even a fake intent, stays inside the link', () => {
-  const uri = appIntentUrl('https://evil.example/#Intent;action=android.intent.action.CALL;end', 'com.a.b');
-  const intent = parseIntent(uri);
-  assert.equal(intent.data, 'https://evil.example/#Intent;action=android.intent.action.CALL;end');
-  assert.equal(intent.package, 'com.a.b');
-  assert.equal(intent.action, undefined);
-});
-
-test('intent URLs need an http(s) link and a valid package name', () => {
-  assert.throws(() => appIntentUrl('javascript:alert(1)', 'com.a.b'));
-  assert.throws(() => appIntentUrl('https://a.com/', 'com.a.b;end'));
-  assert.throws(() => appIntentUrl('https://a.com/', 'firefox'));
-});
-
-test('package names', () => {
-  for (const ok of ['com.tencent.mm', 'org.mozilla.firefox', 'com.example_app.v2']) assert.ok(isPackageName(ok), ok);
-  for (const bad of ['', 'firefox', 'com..a', '.com.a', 'com.a.', '1com.a', 'com.a;x', 'com.a b', 'com.a/b']) {
-    assert.ok(!isPackageName(bad), bad);
-  }
 });
 
 test('first link in the content', () => {

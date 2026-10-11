@@ -52,6 +52,12 @@ npm test           # 服务器单元测试与集成测试
 
 浏览器只允许在 HTTPS 或 `localhost` 下使用摄像头。要用手机测试，需要部署到带 HTTPS 的地址。
 
+## 将链接交给 App
+
+- Android：点击内容卡片上的“分享链接”，在系统分享面板中选择目标 App。这对应 iPhone 快捷指令的“从输入中获取 URL → 将 URL 分享给 App”。需要支持系统分享的浏览器（如新版 Edge 或 Chrome）及 HTTPS；如果目标 App 没有出现在面板中，表示 Android 版没有提供兼容的分享入口。
+- 浏览器不能预选系统分享目标，需要在分享面板中选择 App。
+- iPhone、iPad 和 Mac：仍可配置快捷指令名称，把二维码内容传给快捷指令。
+
 ## 部署（多线接入）
 
 生产环境：<https://qripple.inkorange.com>，两台东京服务器，分别走两条不同的网络线路：

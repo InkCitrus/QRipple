@@ -226,7 +226,7 @@ main {
 
 .hint { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
 
-/* Copy and "open in app" side by side; minmax(0, …) columns so long text never widens the card. */
+/* Content actions stay side by side without letting long text widen the card. */
 .content-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 12px; }
 .content-actions .btn { min-width: 0; padding: 0 10px; gap: 6px; }
 .content-actions .btn svg { flex: none; width: 18px; height: 18px; }
@@ -242,7 +242,7 @@ main {
   color: var(--muted);
 }
 .launch-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.launch-hint { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: var(--warn); }
+.launch-share-note { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
 .link-btn {
   padding: 0;
   border: 0;

@@ -103,16 +103,20 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></svg>
               <span data-i18n="common.copy"></span>
             </button>
+            <button type="button" class="btn btn-secondary btn-small launch-share" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
+              <span data-i18n="launch.android.share"></span>
+            </button>
             <button type="button" class="btn btn-secondary btn-small launch-run" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M8 10H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>
               <span class="launch-label"></span>
             </button>
           </div>
+          <p class="launch-share-note" hidden></p>
           <p class="launch-note" hidden>
             <span class="launch-target"></span>
             <button type="button" class="link-btn launch-change" data-i18n="launch.change"></button>
           </p>
-          <p class="launch-hint" role="status" hidden></p>
         </div>
 
         <button type="button" class="btn btn-danger btn-block" id="share-end" data-i18n="share.end"></button>
@@ -169,16 +173,20 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></svg>
               <span data-i18n="common.copy"></span>
             </button>
+            <button type="button" class="btn btn-secondary launch-share" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
+              <span data-i18n="launch.android.share"></span>
+            </button>
             <button type="button" class="btn btn-secondary launch-run" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M8 10H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1"/></svg>
               <span class="launch-label"></span>
             </button>
           </div>
+          <p class="launch-share-note" hidden></p>
           <p class="launch-note" hidden>
             <span class="launch-target"></span>
             <button type="button" class="link-btn launch-change" data-i18n="launch.change"></button>
           </p>
-          <p class="launch-hint" role="status" hidden></p>
         </div>
 
         <button type="button" class="btn btn-ghost btn-block" id="join-leave" data-i18n="join.leave"></button>

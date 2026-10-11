@@ -3,7 +3,7 @@
 import { getLang, t } from './i18n.js';
 import { linkSegments } from './linkify.js';
 import { payloadText } from './payload.js';
-import { appIntentUrl, firstLink, isPackageName, launchPlatform, shortcutUrl } from './launch.js';
+import { firstLink, launchPlatform, shortcutUrl } from './launch.js';
 
 export function $(selector, root = document) {
   return root.querySelector(selector);
@@ -93,11 +93,7 @@ export async function copyPayload(text, bytes) {
 }
 
 const LAUNCH_KEY = 'qripple.launch';
-// On Android, still being on the page this long after the jump means it didn't
-// happen: the browser blocked it (common in phone makers' own browsers and
-// in-app browsers) or no app took the link. Opening an app hides the page.
-const LAUNCH_TIMEOUT_MS = 2000;
-let launchTarget = (() => {
+let shortcutName = (() => {
   try {
     return localStorage.getItem(LAUNCH_KEY) || '';
   } catch {
@@ -106,60 +102,63 @@ let launchTarget = (() => {
 })();
 
 /**
- * "Open in app": hands the QR content to the app the user named once (kept in
- * this browser, shared by both views): a Shortcuts shortcut on Apple devices,
- * or an Android app (by package name) for the first web link. Hidden
- * elsewhere. `getPayload()` returns the current { text, bytes } or null.
+ * Hand QR content to a saved Shortcuts shortcut on Apple devices, or share
+ * the first web link through Android's system share sheet. Hidden elsewhere.
+ * `getPayload()` returns the current { text, bytes } or null.
  */
 export function mountLaunch(root, getPayload) {
   const run = $('.launch-run', root);
+  const share = $('.launch-share', root);
+  const shareNote = $('.launch-share-note', root);
   const label = $('.launch-label', root);
   const note = $('.launch-note', root);
   const target = $('.launch-target', root);
   const change = $('.launch-change', root);
-  const hint = $('.launch-hint', root);
   const platform = launchPlatform(navigator.userAgent);
-  let hintTimer = null;
+  let sharing = false;
+  let mounted = true;
+
+  function payloadLink() {
+    const p = getPayload();
+    return p ? firstLink(payloadText(p.text, p.bytes)) : null;
+  }
+
+  function canShareLink(link) {
+    if (!link || typeof navigator.share !== 'function') return false;
+    try {
+      return !navigator.canShare || navigator.canShare({ url: link });
+    } catch {
+      return false;
+    }
+  }
 
   function launchUrl() {
     const p = getPayload();
-    if (!p || !launchTarget) return null;
+    if (!p || !shortcutName) return null;
     const text = payloadText(p.text, p.bytes);
-    if (platform === 'shortcuts') return shortcutUrl(launchTarget, text);
-    const link = firstLink(text);
-    return link && isPackageName(launchTarget) ? appIntentUrl(link, launchTarget) : null;
+    return shortcutUrl(shortcutName, text);
   }
 
   function render() {
-    run.hidden = !platform;
-    note.hidden = !platform || !launchTarget;
-    if (!platform) return;
-    setText(label, t(`launch.${platform}.${launchTarget ? 'run' : 'setup'}`));
-    setText(target, launchTarget ? t(`launch.${platform}.target`, { name: launchTarget }) : '');
+    const link = payloadLink();
+    share.hidden = platform !== 'android';
+    shareNote.hidden = share.hidden;
+    share.disabled = sharing || !canShareLink(link);
+    setText(shareNote, t(typeof navigator.share === 'function' ? 'launch.android.shareNote' : 'launch.android.shareUnsupported'));
+    run.hidden = platform !== 'shortcuts';
+    note.hidden = run.hidden || !shortcutName;
+    if (run.hidden) return;
+    setText(label, t(`launch.shortcuts.${shortcutName ? 'run' : 'setup'}`));
+    setText(target, shortcutName ? t('launch.shortcuts.target', { name: shortcutName }) : '');
     run.title = target.textContent;
-    run.disabled = Boolean(launchTarget) && !launchUrl();
-    setText(hint, platform === 'android' ? t('launch.android.failed') : '');
-  }
-
-  function hideHint() {
-    clearTimeout(hintTimer);
-    hint.hidden = true;
-  }
-
-  function onVisibility() {
-    if (document.visibilityState === 'hidden') hideHint(); // the app opened
+    run.disabled = Boolean(shortcutName) && !launchUrl();
   }
 
   function editTarget() {
-    const input = window.prompt(t(`launch.${platform}.prompt`), launchTarget);
+    const input = window.prompt(t('launch.shortcuts.prompt'), shortcutName);
     if (input === null) return;
     const value = input.trim();
-    if (value && platform === 'android' && !isPackageName(value)) {
-      toast(t('launch.android.invalid'));
-      return;
-    }
-    launchTarget = value;
-    hideHint();
+    shortcutName = value;
     try {
       if (value) localStorage.setItem(LAUNCH_KEY, value);
       else localStorage.removeItem(LAUNCH_KEY);
@@ -170,31 +169,44 @@ export function mountLaunch(root, getPayload) {
   }
 
   function onRun() {
-    hideHint();
-    if (!launchTarget) {
+    if (platform !== 'shortcuts') return;
+    if (!shortcutName) {
       editTarget();
       return;
     }
     const url = launchUrl();
     if (!url) return;
     window.location.href = url;
-    if (platform === 'android') {
-      hintTimer = setTimeout(() => {
-        hint.hidden = false;
-      }, LAUNCH_TIMEOUT_MS);
+  }
+
+  async function onShare() {
+    const link = payloadLink();
+    if (platform !== 'android' || sharing || !canShareLink(link)) return;
+    sharing = true;
+    render();
+    try {
+      // Keep this call in the click handler: Web Share requires a user gesture.
+      // Share the URL once; Android supplies it to the selected app as a link.
+      // Web Share cannot preselect an Android package or confirm app delivery.
+      await navigator.share({ url: link });
+    } catch (error) {
+      if (mounted && error?.name !== 'AbortError') toast(t('launch.android.shareFailed'));
+    } finally {
+      sharing = false;
+      if (mounted) render();
     }
   }
 
   run.addEventListener('click', onRun);
+  share.addEventListener('click', onShare);
   change.addEventListener('click', editTarget);
-  document.addEventListener('visibilitychange', onVisibility);
   return {
     render,
     unmount() {
-      hideHint();
+      mounted = false;
       run.removeEventListener('click', onRun);
+      share.removeEventListener('click', onShare);
       change.removeEventListener('click', editTarget);
-      document.removeEventListener('visibilitychange', onVisibility);
     },
   };
 }
