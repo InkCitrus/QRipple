@@ -140,7 +140,7 @@ Restarting the service ends the sessions in progress (they only live in memory).
 
 ### Multiple access lines (nginx + Tailscale)
 
-In some regions a single network route isn't reliable. A multi-line deployment serves the site from two servers on different networks; clients try both lines in parallel and use whichever connects first. It is more involved, and the single-server setup above is usually enough. The hosted instance is set up like this:
+In some regions a single network route isn't reliable. A multi-line deployment serves the site from several servers on different networks, each server being one line; clients try the lines in parallel and use whichever connects first. It is more involved, and the single-server setup above is usually enough. The hosted instance uses two servers:
 
 ```
                       ┌─ tk.qripple.inkorange.com ─► vps-tk    (UCloud)    nginx ─┐
@@ -150,48 +150,74 @@ page qripple.inkorange.com: two A records, one per server
 ```
 
 - **Racing lines**: clients get the line list from `/lines.json` and try the last line that worked first. If it hasn't connected within 0.6 seconds, the next line is tried in parallel, and the first to connect wins. On reconnect, the line that just dropped goes last. See `public/js/connection.js`.
-- **One session across lines**: both lines forward to the same primary QRipple process (over Tailscale when it is on the other server), so a sharer and a receiver on different lines still meet in one session. If the primary is unreachable, nginx switches to the backup process on the other server. Sessions live only in the primary's memory, so restarting it ends the sessions in progress.
-- **Certificates**: each server uses certbot (webroot) for the main domain plus its own line's domain. The main domain resolves to both servers, so an ACME challenge that lands on the other server is forwarded to the requesting one over Tailscale.
-- The scripts are designed for **two servers**; more would need a different way of forwarding certificate challenges.
+- **One session across lines**: every line forwards to the same primary QRipple process (over Tailscale when it is on another server), so a sharer and a receiver on different lines still meet in one session. If the primary is unreachable, every line switches to the same backup process. There can only be one backup: nginx spreads requests over several backups, which would split a session between processes. Sessions live only in memory, so restarting the primary ends the sessions in progress.
+- **Certificates**: each server uses certbot (webroot) for the main domain plus its own line's domain. The main domain resolves to every server, so an ACME challenge that lands on another server is passed over Tailscale to the other servers in turn until it reaches the one that asked.
 
 **Requirements**
 
-- Two Ubuntu 24.04 servers, called A (runs the primary process) and B (runs the backup) below; otherwise the same requirements as a single server. nginx can be shared with other sites: the script only adds a `qripple` site.
-- Both servers on the same [Tailscale](https://tailscale.com) network. Note each one's Tailscale address (`tailscale ip -4`); the examples use A = `100.64.0.1` and B = `100.64.0.2`.
-- Three domain names (using `qr.example.com` as the example):
-  - `qr.example.com`: two A records, one for A's public IP and one for B's (the address people open);
-  - `a.qr.example.com` pointing at A and `b.qr.example.com` pointing at B (the two lines).
+- Two or more Ubuntu 24.04 servers; otherwise the same requirements as a single server. nginx can be shared with other sites: the script only adds a `qripple` site.
+- All servers on the same [Tailscale](https://tailscale.com) network. Note each one's Tailscale address (`tailscale ip -4`).
+- One server runs the primary process and another the backup. The examples use three servers: A (primary, `100.64.0.1`), B (backup, `100.64.0.2`) and C (line only, `100.64.0.3`). With two servers, leave out C.
+- Domain names (using `qr.example.com` as the example):
+  - `qr.example.com`: one A record per server (the address people open);
+  - one line domain per server: `a.qr.example.com` pointing at A, `b.qr.example.com` at B, `c.qr.example.com` at C.
+
+Settings per server (`MAIN_NAME` and `ACCESS_LINES` are the same everywhere):
+
+| Setting | A (primary) | B (backup) | C (line only) |
+| --- | --- | --- | --- |
+| `LINE_NAME` | `a.qr.example.com` | `b.qr.example.com` | `c.qr.example.com` |
+| `LISTEN_HOSTS` | `127.0.0.1,100.64.0.1` | `127.0.0.1,100.64.0.2` | `127.0.0.1` |
+| `PRIMARY` | `127.0.0.1:3000` | `100.64.0.1:3000` | `100.64.0.1:3000` |
+| `BACKUP` | `100.64.0.2:3000` | `127.0.0.1:3000` | `100.64.0.2:3000` |
+| `PEERS` (every other server) | `100.64.0.2,100.64.0.3` | `100.64.0.1,100.64.0.3` | `100.64.0.1,100.64.0.2` |
 
 **Steps**
 
 ```bash
-# 1. On your computer: get the code, install dependencies, copy deploy/ to both servers
+# 1. On your computer: get the code, install dependencies, copy deploy/ to every server
 git clone https://github.com/InkCitrus/QRipple.git && cd QRipple && npm install
-for h in serverA serverB; do ssh $h 'mkdir -p qripple-deploy' && scp deploy/* $h:qripple-deploy/; done
+for h in serverA serverB serverC; do ssh $h 'mkdir -p qripple-deploy' && scp deploy/* $h:qripple-deploy/; done
 ```
 
 ```bash
-# 2. On server A (primary here, backup on B)
-sudo MAIN_NAME=qr.example.com ACCESS_LINES=a.qr.example.com,b.qr.example.com \
+# 2. On each server, with the settings from the table. Server A:
+sudo MAIN_NAME=qr.example.com \
+     ACCESS_LINES=a.qr.example.com,b.qr.example.com,c.qr.example.com \
      LINE_NAME=a.qr.example.com LISTEN_HOSTS=127.0.0.1,100.64.0.1 \
-     PRIMARY=127.0.0.1:3000 BACKUP=100.64.0.2:3000 PEER=100.64.0.2 \
+     PRIMARY=127.0.0.1:3000 BACKUP=100.64.0.2:3000 PEERS=100.64.0.2,100.64.0.3 \
      bash qripple-deploy/setup-line.sh
 
-# 3. On server B (primary on A, backup here)
-sudo MAIN_NAME=qr.example.com ACCESS_LINES=a.qr.example.com,b.qr.example.com \
+# Server B:
+sudo MAIN_NAME=qr.example.com \
+     ACCESS_LINES=a.qr.example.com,b.qr.example.com,c.qr.example.com \
      LINE_NAME=b.qr.example.com LISTEN_HOSTS=127.0.0.1,100.64.0.2 \
-     PRIMARY=100.64.0.1:3000 BACKUP=127.0.0.1:3000 PEER=100.64.0.1 \
+     PRIMARY=100.64.0.1:3000 BACKUP=127.0.0.1:3000 PEERS=100.64.0.1,100.64.0.3 \
+     bash qripple-deploy/setup-line.sh
+
+# Server C:
+sudo MAIN_NAME=qr.example.com \
+     ACCESS_LINES=a.qr.example.com,b.qr.example.com,c.qr.example.com \
+     LINE_NAME=c.qr.example.com LISTEN_HOSTS=127.0.0.1 \
+     PRIMARY=100.64.0.1:3000 BACKUP=100.64.0.2:3000 PEERS=100.64.0.1,100.64.0.2 \
      bash qripple-deploy/setup-line.sh
 ```
 
 ```bash
-# 4. On your computer: ship the code to both servers (the backup must run too)
-deploy/deploy.sh serverA serverB
+# 3. On your computer: ship the code to every server
+deploy/deploy.sh serverA serverB serverC
 ```
 
-5. Once DNS has propagated, run the commands from steps 2 and 3 again on A and B with `--issue-cert` added at the end. This gets the certificates and turns on HTTPS. Then open `https://qr.example.com`.
+4. Once DNS has propagated, run each server's command from step 2 again with `--issue-cert` added at the end. This gets the certificates and turns on HTTPS. Then open `https://qr.example.com`.
 
-To release new versions: `deploy/deploy.sh serverA serverB`. `setup-line.sh` writes its settings to `/etc/qripple/qripple.env`; running it again only updates the settings it manages and keeps any others you added.
+To release new versions: `deploy/deploy.sh serverA serverB serverC`. `setup-line.sh` writes its settings to `/etc/qripple/qripple.env`; running it again only updates the settings it manages and keeps any others you added.
+
+**Adding a server later** (say D)
+
+1. Add the line domain `d.qr.example.com` pointing at D.
+2. On every existing server, run its step 2 command again with D's line domain added to `ACCESS_LINES` and D's Tailscale address added to `PEERS` (no `--issue-cert` needed; existing certificates are unaffected).
+3. Copy `deploy/` to D and run `setup-line.sh` the way C does (`PEERS` listing every other server), then run `deploy/deploy.sh` for all servers so the new line list takes effect (this ends the sessions in progress).
+4. Run D's command again with `--issue-cert`, and finally add an A record for `qr.example.com` pointing at D.
 
 ### Other environments
 

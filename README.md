@@ -140,7 +140,7 @@ deploy/deploy.sh myserver
 
 ### 多线路部署（nginx + Tailscale）
 
-在部分地区，单条网络线路的连通性不稳定。多线路部署让两台位于不同网络的服务器共同提供服务，客户端同时尝试两条线路，用最先连通的一条。这种方式更复杂，一般用上面的单台服务器部署就够了。在线实例的部署方式如下：
+在部分地区，单条网络线路的连通性不稳定。多线路部署让多台位于不同网络的服务器共同提供服务，每台服务器是一条线路，客户端同时尝试各条线路，用最先连通的一条。这种方式更复杂，一般用上面的单台服务器部署就够了。在线实例用了两台服务器：
 
 ```
                     ┌─ tk.qripple.inkorange.com ─► vps-tk    (UCloud)    nginx ─┐
@@ -150,48 +150,74 @@ deploy/deploy.sh myserver
 ```
 
 - **线路竞速**：客户端从 `/lines.json` 拿到线路列表，优先连上次成功的线路；0.6 秒内没连上就并行尝试下一条，谁先连上用谁。重连时刚断开的线路排在最后。逻辑见 `public/js/connection.js`。
-- **会话一致**：两条线路都转发到同一个 QRipple 主进程（跨服务器时经由 Tailscale），所以分享者和接收者走不同线路也在同一会话里。主进程不可达时，nginx 自动切到另一台上的备用进程。会话只存在主进程内存中，主进程重启会结束进行中的会话。
-- **证书**：每台服务器用 certbot（webroot）申请主域名和自己的线路域名。主域名解析到两台服务器，ACME 验证请求若落到另一台，会通过 Tailscale 转给申请方。
-- 部署脚本按**两台服务器**设计；更多服务器需要自行调整证书验证的转发方式。
+- **会话一致**：所有线路都转发到同一个 QRipple 主进程（跨服务器时经由 Tailscale），所以分享者和接收者走不同线路也在同一会话里。主进程不可达时，所有线路都切到同一个备用进程。备用进程只能有一个：nginx 会把请求分散到多个备用进程，同一会话就会被拆开。会话只存在内存中，主进程重启会结束进行中的会话。
+- **证书**：每台服务器用 certbot（webroot）申请主域名和自己的线路域名。主域名解析到所有服务器，ACME 验证请求若落到别的服务器上，会经由 Tailscale 依次转给其他服务器，直到找到申请方。
 
 **准备**
 
-- 两台 Ubuntu 24.04 服务器，下面称为 A（运行主进程）和 B（运行备用进程），其余要求同单台部署。nginx 可以和其他网站共用：脚本只添加一个 `qripple` 站点。
-- 两台都加入同一个 [Tailscale](https://tailscale.com) 网络，记下各自的 Tailscale 地址（`tailscale ip -4`）。下面以 A = `100.64.0.1`、B = `100.64.0.2` 为例。
-- 三个域名（以 `qr.example.com` 为例）：
-  - `qr.example.com`：两条 A 记录，分别指向 A 和 B 的公网 IP（用户访问的地址）；
-  - `a.qr.example.com` 指向 A，`b.qr.example.com` 指向 B（两条线路）。
+- 两台或更多 Ubuntu 24.04 服务器，其余要求同单台部署。nginx 可以和其他网站共用：脚本只添加一个 `qripple` 站点。
+- 所有服务器加入同一个 [Tailscale](https://tailscale.com) 网络，记下各自的 Tailscale 地址（`tailscale ip -4`）。
+- 选一台运行主进程、另一台运行备用进程。下面以三台为例：A（主进程，`100.64.0.1`）、B（备用进程，`100.64.0.2`）、C（只做线路，`100.64.0.3`）。只有两台时去掉 C 即可。
+- 域名（以 `qr.example.com` 为例）：
+  - `qr.example.com`：每台服务器一条 A 记录（用户访问的地址）；
+  - 每台服务器一个线路域名：`a.qr.example.com` 指向 A，`b.qr.example.com` 指向 B，`c.qr.example.com` 指向 C。
+
+各服务器的参数（`MAIN_NAME` 和 `ACCESS_LINES` 在所有服务器上都相同）：
+
+| 参数 | A（主进程） | B（备用进程） | C（只做线路） |
+| --- | --- | --- | --- |
+| `LINE_NAME` | `a.qr.example.com` | `b.qr.example.com` | `c.qr.example.com` |
+| `LISTEN_HOSTS` | `127.0.0.1,100.64.0.1` | `127.0.0.1,100.64.0.2` | `127.0.0.1` |
+| `PRIMARY` | `127.0.0.1:3000` | `100.64.0.1:3000` | `100.64.0.1:3000` |
+| `BACKUP` | `100.64.0.2:3000` | `127.0.0.1:3000` | `100.64.0.2:3000` |
+| `PEERS`（其他所有服务器） | `100.64.0.2,100.64.0.3` | `100.64.0.1,100.64.0.3` | `100.64.0.1,100.64.0.2` |
 
 **步骤**
 
 ```bash
-# 1. 在本地：获取代码、安装依赖，并把 deploy/ 复制到两台服务器
+# 1. 在本地：获取代码、安装依赖，并把 deploy/ 复制到每台服务器
 git clone https://github.com/InkCitrus/QRipple.git && cd QRipple && npm install
-for h in serverA serverB; do ssh $h 'mkdir -p qripple-deploy' && scp deploy/* $h:qripple-deploy/; done
+for h in serverA serverB serverC; do ssh $h 'mkdir -p qripple-deploy' && scp deploy/* $h:qripple-deploy/; done
 ```
 
 ```bash
-# 2. 在服务器 A 上执行（主进程在本机，备用进程在 B）
-sudo MAIN_NAME=qr.example.com ACCESS_LINES=a.qr.example.com,b.qr.example.com \
+# 2. 在每台服务器上执行，参数见上表。服务器 A：
+sudo MAIN_NAME=qr.example.com \
+     ACCESS_LINES=a.qr.example.com,b.qr.example.com,c.qr.example.com \
      LINE_NAME=a.qr.example.com LISTEN_HOSTS=127.0.0.1,100.64.0.1 \
-     PRIMARY=127.0.0.1:3000 BACKUP=100.64.0.2:3000 PEER=100.64.0.2 \
+     PRIMARY=127.0.0.1:3000 BACKUP=100.64.0.2:3000 PEERS=100.64.0.2,100.64.0.3 \
      bash qripple-deploy/setup-line.sh
 
-# 3. 在服务器 B 上执行（主进程在 A，备用进程在本机）
-sudo MAIN_NAME=qr.example.com ACCESS_LINES=a.qr.example.com,b.qr.example.com \
+# 服务器 B：
+sudo MAIN_NAME=qr.example.com \
+     ACCESS_LINES=a.qr.example.com,b.qr.example.com,c.qr.example.com \
      LINE_NAME=b.qr.example.com LISTEN_HOSTS=127.0.0.1,100.64.0.2 \
-     PRIMARY=100.64.0.1:3000 BACKUP=127.0.0.1:3000 PEER=100.64.0.1 \
+     PRIMARY=100.64.0.1:3000 BACKUP=127.0.0.1:3000 PEERS=100.64.0.1,100.64.0.3 \
+     bash qripple-deploy/setup-line.sh
+
+# 服务器 C：
+sudo MAIN_NAME=qr.example.com \
+     ACCESS_LINES=a.qr.example.com,b.qr.example.com,c.qr.example.com \
+     LINE_NAME=c.qr.example.com LISTEN_HOSTS=127.0.0.1 \
+     PRIMARY=100.64.0.1:3000 BACKUP=100.64.0.2:3000 PEERS=100.64.0.1,100.64.0.2 \
      bash qripple-deploy/setup-line.sh
 ```
 
 ```bash
-# 4. 在本地：发布代码到两台服务器（备用进程也要运行）
-deploy/deploy.sh serverA serverB
+# 3. 在本地：发布代码到所有服务器
+deploy/deploy.sh serverA serverB serverC
 ```
 
-5. 域名解析生效后，在 A 和 B 上分别把第 2、3 步的命令末尾加上 `--issue-cert` 再执行一次，申请证书并启用 HTTPS。之后打开 `https://qr.example.com` 即可使用。
+4. 域名解析生效后，在每台服务器上把第 2 步的命令末尾加上 `--issue-cert` 再执行一次，申请证书并启用 HTTPS。之后打开 `https://qr.example.com` 即可使用。
 
-以后发布新版本：`deploy/deploy.sh serverA serverB`。`setup-line.sh` 生成的配置在 `/etc/qripple/qripple.env`，重新执行脚本时只更新它管理的几项，手动添加的其他配置会保留。
+以后发布新版本：`deploy/deploy.sh serverA serverB serverC`。`setup-line.sh` 生成的配置在 `/etc/qripple/qripple.env`，重新执行脚本时只更新它管理的几项，手动添加的其他配置会保留。
+
+**以后再增加一台服务器**（例如 D）
+
+1. 添加线路域名 `d.qr.example.com` 指向 D。
+2. 在每台已有的服务器上重新执行第 2 步的命令：`ACCESS_LINES` 加上 D 的线路域名，`PEERS` 加上 D 的 Tailscale 地址（不用加 `--issue-cert`，已有的证书不受影响）。
+3. 把 `deploy/` 复制到 D，按 C 的方式执行 `setup-line.sh`（`PEERS` 填其他所有服务器），然后 `deploy/deploy.sh` 发布到所有服务器，使新的线路列表生效（会结束进行中的会话）。
+4. 在 D 上加 `--issue-cert` 再执行一次，最后给 `qr.example.com` 加一条指向 D 的 A 记录。
 
 ### 其他环境
 

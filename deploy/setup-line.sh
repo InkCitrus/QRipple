@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
 # Set up (or update) one QRipple access line on Ubuntu 24.04 with nginx.
-# Designed for two servers on one Tailscale network, each serving one line;
-# both forward to the same primary QRipple process. Run on each server as
-# root, from a directory holding the deploy/ files. On the primary server:
+# Two or more servers on one Tailscale network each serve one line, and all
+# of them forward to the same primary QRipple process (with one backup
+# process for when the primary is down). Run on each server as root, from a
+# directory holding the deploy/ files. On the primary server A of three:
 #
 #   sudo MAIN_NAME=qr.example.com \
-#        ACCESS_LINES=a.qr.example.com,b.qr.example.com \
+#        ACCESS_LINES=a.qr.example.com,b.qr.example.com,c.qr.example.com \
 #        LINE_NAME=a.qr.example.com \
 #        LISTEN_HOSTS=127.0.0.1,100.64.0.1 \
-#        PRIMARY=127.0.0.1:3000 BACKUP=100.64.0.2:3000 PEER=100.64.0.2 \
+#        PRIMARY=127.0.0.1:3000 BACKUP=100.64.0.2:3000 \
+#        PEERS=100.64.0.2,100.64.0.3 \
 #        bash setup-line.sh [--issue-cert]
 #
-# (100.64.0.1 and 100.64.0.2 stand for the two servers' Tailscale addresses.)
+# (100.64.0.1, .2 and .3 stand for the servers' Tailscale addresses.)
 #
-# MAIN_NAME:    the page's domain, resolving to every node
-# ACCESS_LINES: every line's domain, each resolving to one node
-# LINE_NAME:    this node's line
-# LISTEN_HOSTS: addresses this node's QRipple listens on (local nginx plus its
-#               Tailscale address, so the other node can reach it)
-# PRIMARY/BACKUP: QRipple processes nginx forwards to (backup used when the
-#               primary is down); every line must use the same primary
-# PEER:         the other node's Tailscale address, for ACME challenges that
-#               land on the wrong node
+# MAIN_NAME:    the page's domain, resolving to every server
+# ACCESS_LINES: every line's domain, each resolving to one server
+# LINE_NAME:    this server's line
+# LISTEN_HOSTS: addresses this server's QRipple listens on (local nginx plus,
+#               on the primary and backup servers, the Tailscale address the
+#               other servers forward to)
+# PRIMARY/BACKUP: the QRipple processes nginx forwards to, as host:port (the
+#               backup only while the primary is down). Every server must use
+#               the same primary and the same backup: 127.0.0.1:3000 on the
+#               server that runs it, its Tailscale address elsewhere.
+# PEERS:        the other servers' Tailscale addresses (comma-separated), for
+#               ACME challenges that land on the wrong server. PEER, a single
+#               address, is still accepted.
 #
 # Works on Ubuntu 24.04 (x86_64 or arm64), and only adds a "qripple" site to
 # nginx, so it can share a server with other sites.
@@ -29,7 +35,8 @@
 # exists; run again with --issue-cert after DNS points at the node.
 set -euo pipefail
 
-: "${MAIN_NAME:?}" "${ACCESS_LINES:?}" "${LINE_NAME:?}" "${LISTEN_HOSTS:?}" "${PRIMARY:?}" "${BACKUP:?}" "${PEER:?}"
+PEERS="${PEERS:-${PEER:-}}"
+: "${MAIN_NAME:?}" "${ACCESS_LINES:?}" "${LINE_NAME:?}" "${LISTEN_HOSTS:?}" "${PRIMARY:?}" "${BACKUP:?}" "${PEERS:?}"
 NODE_VERSION="${NODE_VERSION:-v24.21.0}"
 BASE=/opt/qripple
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -89,9 +96,13 @@ fi
 
 # --- nginx site ------------------------------------------------------------------
 site=/etc/nginx/sites-available/qripple
+peer_servers=""
+IFS=',' read -ra peer_list <<< "$PEERS"
+for peer in "${peer_list[@]}"; do peer_servers+="    server ${peer// /}:80;\n"; done
 sed -e "s|__NAMES__|$MAIN_NAME $LINE_NAME|g" -e "s|__PRIMARY__|$PRIMARY|g" \
-    -e "s|__BACKUP__|$BACKUP|g" -e "s|__PEER__|$PEER|g" \
-    "$SRC/nginx-qripple.conf.template" > "$site.new"
+    -e "s|__BACKUP__|$BACKUP|g" \
+    "$SRC/nginx-qripple.conf.template" |
+  awk -v servers="$peer_servers" '$1 == "__PEER_SERVERS__" { printf "%s", servers; next } { print }' > "$site.new"
 if [ ! -f "$CERT" ]; then
   # No certificate yet: HTTP only (ACME challenges + redirect).
   sed -i '/#__HTTPS_BEGIN__/,/#__HTTPS_END__/d' "$site.new"

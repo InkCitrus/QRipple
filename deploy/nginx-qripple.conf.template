@@ -3,12 +3,19 @@
 #
 # Every line forwards to the same primary QRipple process (so a sharer and a
 # receiver on different lines meet in one session); the backup process only
-# takes over while the primary is unreachable.
+# takes over while the primary is unreachable. There is one backup, the same
+# on every server: nginx spreads requests over several backups, which would
+# split a session between processes.
 
 upstream qripple_app {
     server __PRIMARY__ max_fails=2 fail_timeout=15s;
     server __BACKUP__ backup;
     keepalive 8;
+}
+
+# The other servers, for ACME challenges that reach this one by mistake.
+upstream qripple_acme_peers {
+__PEER_SERVERS__
 }
 
 map $http_upgrade $qripple_connection {
@@ -21,9 +28,10 @@ server {
     listen [::]:80;
     server_name __NAMES__;
 
-    # ACME HTTP-01. The main name resolves to every line, so a challenge can
-    # reach the node that did not request it: serve local tokens, otherwise
-    # ask the peer once (the header stops the request bouncing back).
+    # ACME HTTP-01. The main name resolves to every server, so a challenge can
+    # reach a server that did not request it: serve local tokens, otherwise ask
+    # the other servers in turn until one has it. The header stops a forwarded
+    # request from being forwarded again.
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/qripple-acme;
         try_files $uri @qripple_acme_peer;
@@ -35,7 +43,8 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-QRipple-Peer 1;
         proxy_connect_timeout 3s;
-        proxy_pass http://__PEER__:80;
+        proxy_next_upstream error timeout http_404;
+        proxy_pass http://qripple_acme_peers;
     }
 
     location / {
