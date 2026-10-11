@@ -2,6 +2,7 @@
 
 import { getLang, t } from './i18n.js';
 import { linkSegments } from './linkify.js';
+import { describe } from './payload.js';
 
 export function $(selector, root = document) {
   return root.querySelector(selector);
@@ -82,6 +83,13 @@ export async function copyText(text) {
     area.remove();
     return ok;
   }
+}
+
+/** Copy a QR payload as text (full hex for binary data) and report the result. */
+export async function copyPayload(text, bytes) {
+  const shown = describe(text, bytes);
+  const ok = await copyText(shown.binary ? shown.fullHex() : shown.text);
+  toast(t(ok ? 'common.copied' : 'common.copyFailed'));
 }
 
 /** Keep the screen on while a session is active (where supported). */
