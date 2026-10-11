@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Set up (or update) one QRipple access line on Ubuntu 24.04 with nginx.
-# Run on the server as root, from a directory holding the deploy/ files:
+# Designed for two servers on one Tailscale network, each serving one line;
+# both forward to the same primary QRipple process. Run on each server as
+# root, from a directory holding the deploy/ files. On the primary server:
 #
-#   sudo MAIN_NAME=qripple.inkorange.com \
-#        ACCESS_LINES=tk.qripple.inkorange.com,az.qripple.inkorange.com \
-#        LINE_NAME=az.qripple.inkorange.com \
+#   sudo MAIN_NAME=qr.example.com \
+#        ACCESS_LINES=a.qr.example.com,b.qr.example.com \
+#        LINE_NAME=a.qr.example.com \
 #        LISTEN_HOSTS=127.0.0.1,100.64.0.1 \
 #        PRIMARY=127.0.0.1:3000 BACKUP=100.64.0.2:3000 PEER=100.64.0.2 \
 #        bash setup-line.sh [--issue-cert]
+#
+# (100.64.0.1 and 100.64.0.2 stand for the two servers' Tailscale addresses.)
 #
 # MAIN_NAME:    the page's domain, resolving to every node
 # ACCESS_LINES: every line's domain, each resolving to one node
@@ -60,13 +64,17 @@ fi
 mkdir -p /var/www/qripple-acme
 
 # --- app settings and service -------------------------------------------------
+# Rewrites the settings this script owns and keeps any others added by hand.
 mkdir -p /etc/qripple
-cat > /etc/qripple/qripple.env <<EOF
-HOST=$LISTEN_HOSTS
-ACCESS_LINES=$ACCESS_LINES
-ALLOWED_ORIGINS=https://$MAIN_NAME
-TRUST_PROXY=1
-EOF
+env_file=/etc/qripple/qripple.env
+{
+  echo "HOST=$LISTEN_HOSTS"
+  echo "ACCESS_LINES=$ACCESS_LINES"
+  echo "ALLOWED_ORIGINS=https://$MAIN_NAME"
+  echo "TRUST_PROXY=1"
+  if [ -f "$env_file" ]; then grep -v -E '^(HOST|ACCESS_LINES|ALLOWED_ORIGINS|TRUST_PROXY)=' "$env_file" || true; fi
+} > "$env_file.new"
+mv "$env_file.new" "$env_file"
 install -m 0644 "$SRC/qripple.service" /etc/systemd/system/qripple.service
 systemctl daemon-reload
 systemctl enable qripple >/dev/null
