@@ -1,5 +1,7 @@
 # QRipple
 
+简体中文 | [English](README.en.md)
+
 **Real-time QR Code Sharing** · *Scan once. Share everywhere.*
 
 在线使用：<https://qripple.inkorange.com>
@@ -93,13 +95,15 @@ npm ci --omit=dev
 HOST=127.0.0.1 PORT=3000 TRUST_PROXY=1 node server/index.js
 ```
 
-`deploy/` 目录提供了两种在 Ubuntu 24.04 上部署的脚本，都会安装校验过的 Node.js 官方二进制和一个加固过的 systemd 服务（`deploy/qripple.service`）。
+`deploy/` 目录提供了两种在 Ubuntu 24.04（x86_64 或 ARM64）上部署的脚本，都会安装校验过的 Node.js 官方二进制和一个加固过的 systemd 服务（`deploy/qripple.service`）。发布脚本 `deploy/deploy.sh` 在本地运行，需要本地有 Node.js（先跑测试）和 rsync，并且 SSH 用户是 root 或能免密码 sudo。
+
+> 中国大陆的服务器需要域名完成 ICP 备案，才能在 80/443 端口上提供网站。
 
 ### 单台服务器（Caddy）
 
-1. 把 `deploy/Caddyfile` 中的域名改成你自己的，并把域名解析到服务器。
-2. 把 `deploy/` 复制到服务器，执行 `sudo bash deploy/setup-server.sh`（安装 Node.js、Caddy、systemd 服务和 ufw 规则）。
-3. 在本地执行 `deploy/deploy.sh <ssh 主机名>` 发布代码（先跑测试，再 rsync、`npm ci`、重启服务），然后在服务器上 `systemctl reload caddy`。Caddy 会自动申请和续期证书。
+1. 把域名解析到服务器，并在云服务商的防火墙/安全组中放行 80 和 443 端口。
+2. 把 `deploy/` 复制到服务器，执行 `sudo DOMAIN=你的域名 bash deploy/setup-server.sh`（安装 Node.js、Caddy、systemd 服务；装有 ufw 时添加放行规则）。Caddy 会自动申请和续期证书。
+3. 在本地执行 `deploy/deploy.sh <ssh 主机名>` 发布代码（先跑测试，再 rsync、`npm ci`、重启服务）。之后发布新版本也是这一步。
 
 ### 多线路（nginx + Tailscale）
 
@@ -115,7 +119,7 @@ HOST=127.0.0.1 PORT=3000 TRUST_PROXY=1 node server/index.js
 - **线路竞速**：客户端从 `/lines.json` 拿到线路列表，优先连上次成功的线路；0.6 秒内没连上就并行尝试下一条，谁先连上用谁。重连时刚断开的线路排在最后。逻辑见 `public/js/connection.js`。
 - **会话一致**：所有线路都转发到同一个 QRipple 主进程（跨服务器时经由 Tailscale），所以分享者和接收者走不同线路也在同一会话里。主进程不可达时，nginx 自动切到备用进程。会话只存在主进程内存中，主进程重启会结束进行中的会话。
 - **证书**：每台服务器用 certbot（webroot）申请主域名和自己的线路域名。主域名解析到所有服务器，ACME 验证请求若落到另一台，会通过 Tailscale 转给申请方。
-- **初始化一条线路**：把 `deploy/` 复制到服务器后执行 `deploy/setup-line.sh`（参数见脚本开头）；DNS 生效后加 `--issue-cert` 再执行一次即启用 HTTPS。生成的配置在 `/etc/qripple/qripple.env`。
+- **初始化一条线路**：各服务器先加入同一个 Tailscale 网络。把 `deploy/` 复制到服务器后执行 `deploy/setup-line.sh`，用环境变量指定主域名、所有线路域名、本线路域名、监听地址、主/备进程和对端地址（说明见脚本开头）；DNS 生效后加 `--issue-cert` 再执行一次即启用 HTTPS。脚本只在 nginx 中添加一个 `qripple` 站点，可以和其他网站共用服务器。生成的配置在 `/etc/qripple/qripple.env`。
 - **发布**：`deploy/deploy.sh [ssh 主机名 ...]`（不带参数时发布到在线实例的 `vps-azure` 和 `vps-tk`）。
 
 ### 配置项
