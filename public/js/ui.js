@@ -93,6 +93,10 @@ export async function copyPayload(text, bytes) {
 }
 
 const LAUNCH_KEY = 'qripple.launch';
+// On Android, still being on the page this long after the jump means it didn't
+// happen: the browser blocked it (common in phone makers' own browsers and
+// in-app browsers) or no app took the link. Opening an app hides the page.
+const LAUNCH_TIMEOUT_MS = 2000;
 let launchTarget = (() => {
   try {
     return localStorage.getItem(LAUNCH_KEY) || '';
@@ -113,7 +117,9 @@ export function mountLaunch(root, getPayload) {
   const note = $('.launch-note', root);
   const target = $('.launch-target', root);
   const change = $('.launch-change', root);
+  const hint = $('.launch-hint', root);
   const platform = launchPlatform(navigator.userAgent);
+  let hintTimer = null;
 
   function launchUrl() {
     const p = getPayload();
@@ -132,6 +138,16 @@ export function mountLaunch(root, getPayload) {
     setText(target, launchTarget ? t(`launch.${platform}.target`, { name: launchTarget }) : '');
     run.title = target.textContent;
     run.disabled = Boolean(launchTarget) && !launchUrl();
+    setText(hint, platform === 'android' ? t('launch.android.failed') : '');
+  }
+
+  function hideHint() {
+    clearTimeout(hintTimer);
+    hint.hidden = true;
+  }
+
+  function onVisibility() {
+    if (document.visibilityState === 'hidden') hideHint(); // the app opened
   }
 
   function editTarget() {
@@ -143,6 +159,7 @@ export function mountLaunch(root, getPayload) {
       return;
     }
     launchTarget = value;
+    hideHint();
     try {
       if (value) localStorage.setItem(LAUNCH_KEY, value);
       else localStorage.removeItem(LAUNCH_KEY);
@@ -153,21 +170,31 @@ export function mountLaunch(root, getPayload) {
   }
 
   function onRun() {
+    hideHint();
     if (!launchTarget) {
       editTarget();
       return;
     }
     const url = launchUrl();
-    if (url) window.location.href = url;
+    if (!url) return;
+    window.location.href = url;
+    if (platform === 'android') {
+      hintTimer = setTimeout(() => {
+        hint.hidden = false;
+      }, LAUNCH_TIMEOUT_MS);
+    }
   }
 
   run.addEventListener('click', onRun);
   change.addEventListener('click', editTarget);
+  document.addEventListener('visibilitychange', onVisibility);
   return {
     render,
     unmount() {
+      hideHint();
       run.removeEventListener('click', onRun);
       change.removeEventListener('click', editTarget);
+      document.removeEventListener('visibilitychange', onVisibility);
     },
   };
 }

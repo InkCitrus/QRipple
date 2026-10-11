@@ -242,6 +242,7 @@ main {
   color: var(--muted);
 }
 .launch-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.launch-hint { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: var(--warn); }
 .link-btn {
   padding: 0;
   border: 0;

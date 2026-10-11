@@ -101,6 +101,7 @@ const messages = {
     'launch.android.target': '链接用 {name} 打开',
     'launch.android.prompt': '用来打开链接的 App 的包名（例如 org.mozilla.firefox，可在应用商店网页地址的 id= 后找到）。内容中的第一个网址会在这个 App 中打开。留空则清除。',
     'launch.android.invalid': '包名格式不正确',
+    'launch.android.failed': '没有跳转到 App？手机自带浏览器和微信里通常会拦截这种跳转，请改用 Chrome、Edge 或 Firefox 打开本页；也可能是这个 App 不接收这类链接。',
   },
   en: {
     'home.desc': 'No install, no sign-up. The sharer keeps a QR code in front of the camera; receivers enter a 5-digit code and see the same QR code live.',
@@ -199,6 +200,7 @@ const messages = {
     'launch.android.target': 'Links open in {name}',
     'launch.android.prompt': "Package name of the app to open links in (e.g. org.mozilla.firefox; it follows id= in the app's Play Store web address). The first web link in the content opens there. Leave empty to remove it.",
     'launch.android.invalid': "That isn't a valid package name",
+    'launch.android.failed': "Didn't switch to the app? Phone makers' browsers and in-app browsers (like WeChat's) often block this. Open this page in Chrome, Edge or Firefox; or the app may not accept this kind of link.",
   },
 };
 
