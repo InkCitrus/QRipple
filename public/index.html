@@ -29,7 +29,7 @@
       <button type="button" class="topbar-btn settings-toggle" id="settings-open" hidden data-i18n-attr="aria-label:settings.open;title:settings.open">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
-      <button type="button" class="topbar-btn" id="lang-toggle" aria-label="Switch language">EN</button>
+      <button type="button" class="topbar-btn" id="lang-toggle">EN</button>
     </div>
   </header>
 
@@ -38,18 +38,18 @@
     <section class="view" data-view="home" hidden>
       <div class="hero">
         <h1 class="hero-title">QRipple</h1>
-        <p class="hero-tagline">Scan once. Share everywhere.</p>
+        <p class="hero-tagline" data-i18n="home.tagline"></p>
         <p class="hero-desc" data-i18n="home.desc"></p>
       </div>
       <div class="choices">
         <a class="choice choice-share" href="/share" data-link>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M4 12h16"/></svg>
-          <span class="choice-title">Start Sharing</span>
+          <span class="choice-title" data-i18n="home.share"></span>
           <span class="choice-sub" data-i18n="home.shareSub"></span>
         </a>
         <a class="choice choice-join" href="/join" data-link>
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/></svg>
-          <span class="choice-title">Join Session</span>
+          <span class="choice-title" data-i18n="home.join"></span>
           <span class="choice-sub" data-i18n="home.joinSub"></span>
         </a>
       </div>

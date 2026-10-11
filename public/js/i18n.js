@@ -5,6 +5,9 @@ const STORAGE_KEY = 'qripple.lang';
 
 const messages = {
   zh: {
+    'home.tagline': '扫码一次，随处共享',
+    'home.share': '开始分享',
+    'home.join': '加入会话',
     'home.desc': '无需安装、无需注册。分享者用摄像头持续扫描二维码，接收者输入五位配对码，即可实时看到同一个二维码。',
     'home.shareSub': '用摄像头扫描并实时分享二维码',
     'home.joinSub': '输入五位配对码，查看实时二维码',
@@ -109,6 +112,9 @@ const messages = {
     'settings.done': '完成',
   },
   en: {
+    'home.tagline': 'Scan once. Share everywhere.',
+    'home.share': 'Start Sharing',
+    'home.join': 'Join Session',
     'home.desc': 'No install, no sign-up. The sharer keeps a QR code in front of the camera; receivers enter a 5-digit code and see the same QR code live.',
     'home.shareSub': 'Scan a QR code and share it live',
     'home.joinSub': 'Enter a 5-digit code to view it',
