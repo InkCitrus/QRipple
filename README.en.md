@@ -12,8 +12,8 @@ QRipple is a website for sharing a QR code live, with no install and no sign-up.
 
 ## How to use it
 
-1. **Sharer**: open the site, tap *Start Sharing*, allow camera access and point the camera at the QR code. The page shows a 5-digit pairing code.
-2. **Receiver**: open the site, tap *Join Session* and enter the pairing code to see the same QR code (regenerated on the device, ready to scan). Receivers can copy the content or pass a link in it to another app through the system share sheet.
+1. **Sharer**: open the site, tap *Start Sharing*, allow camera access and point the camera at the QR code. The page shows a 5-digit pairing code; *Copy invite* or *Share invite* sends receivers a link like `https://qripple.inkorange.com/24914` instead.
+2. **Receiver**: open the invite link, or open the site, tap *Join Session* and enter the pairing code, to see the same QR code (regenerated on the device, ready to scan). Receivers can copy the content or pass a link in it to another app through the system share sheet.
 3. The session ends, and its code stops working, when the sharer taps *End sharing* or stays offline for more than 2 minutes.
 
 ## Features
@@ -72,7 +72,7 @@ The sharer's session token is kept in sessionStorage, so reloading the page resu
 - Per-IP limits: wrong pairing codes are throttled after 10 attempts (one more every 30 seconds), and session creation and concurrent connections are limited. Messages are rate-limited per connection; oversized messages close the connection.
 - WebSocket connections are checked against the page's Origin. Pages are served with a strict CSP, `Permissions-Policy`, `X-Frame-Options` and other security headers.
 - QR content is treated as untrusted: only http(s) URLs become links, and content is never inserted as HTML.
-- **The 5-digit pairing code is not strong authentication.** Wrong guesses are throttled, but anyone who knows the code can see what is shared. Don't use it for payment codes, login codes or other sensitive QR codes.
+- **The 5-digit pairing code is not strong authentication.** Wrong guesses are throttled, but anyone who knows the code can see what is shared. An invite link is just the code in a URL, so the same applies; an old link stops working when its session ends, but the code may go to a new session 10 minutes later. Don't use it for payment codes, login codes or other sensitive QR codes.
 
 ## Development
 

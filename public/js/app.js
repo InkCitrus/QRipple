@@ -10,23 +10,26 @@ const routes = {
   '/share': { view: 'share', mount: mountShare },
   '/join': { view: 'join', mount: mountJoin },
 };
+// An invite link (/24914) opens the join view and joins that session.
+const INVITE_RE = /^\/(\d{5})$/;
 
 let current = null; // { path, controller }
 
 function routeFor(pathname) {
-  return routes[pathname] ? pathname : '/';
+  return routes[pathname] || INVITE_RE.test(pathname) ? pathname : '/';
 }
 
 function render(force = false) {
   const path = routeFor(location.pathname);
   if (!force && current?.path === path) return;
   current?.controller?.unmount();
-  const route = routes[path];
+  const code = INVITE_RE.exec(path)?.[1];
+  const route = code ? routes['/join'] : routes[path];
   for (const section of document.querySelectorAll('[data-view]')) {
     section.hidden = section.dataset.view !== route.view;
   }
   const root = document.querySelector(`[data-view="${route.view}"]`);
-  const controller = route.mount ? route.mount(root, { navigate }) : null;
+  const controller = route.mount ? route.mount(root, { navigate, code }) : null;
   current = { path, controller };
   window.scrollTo(0, 0);
 }

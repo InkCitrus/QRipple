@@ -6,7 +6,7 @@ import { Connection } from './connection.js';
 import { Scanner } from './scanner.js';
 import { CodeTracker } from './code-tracker.js';
 import { bytesToBase64, describe } from './payload.js';
-import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, mountLaunch, createWakeLock, storage, toast } from './ui.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, copyText, mountLaunch, createWakeLock, storage, toast } from './ui.js';
 
 const STORAGE_KEY = 'qripple.share';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -19,6 +19,9 @@ export function mountShare(root) {
     code: $('#share-code', root),
     conn: $('#share-conn', root),
     receivers: $('#share-receivers', root),
+    invite: $('#share-invite', root),
+    inviteCopy: $('#share-invite-copy', root),
+    inviteShare: $('#share-invite-share', root),
     video: $('#camera-video', root),
     viewfinder: $('#viewfinder', root),
     cameraMessage: $('#camera-message', root),
@@ -61,6 +64,7 @@ export function mountShare(root) {
     sentKey: null, // payload key sent on the current connection
     ackedKey: null,
     syncedAt: null,
+    inviting: false, // the system share sheet is open for the invite link
   };
 
   const wakeLock = createWakeLock();
@@ -142,6 +146,44 @@ export function mountShare(root) {
     const current = tracker.current;
     if (state.phase !== 'active' || !current || state.sentKey === current.key) return;
     if (conn.send({ t: 'update', text: current.text, data: current.key })) state.sentKey = current.key;
+  }
+
+  // ------------------------------------------------------------ invite
+
+  /** Link that opens the join view for this session (see app.js). */
+  function inviteUrl() {
+    return `${location.origin}/${state.code}`;
+  }
+
+  function canShareInvite() {
+    if (typeof navigator.share !== 'function') return false;
+    try {
+      return !navigator.canShare || navigator.canShare({ url: inviteUrl() });
+    } catch {
+      return false;
+    }
+  }
+
+  async function copyInvite() {
+    if (state.phase !== 'active') return;
+    const ok = await copyText(inviteUrl());
+    toast(t(ok ? 'share.inviteCopied' : 'common.copyFailed'));
+  }
+
+  async function shareInvite() {
+    if (state.phase !== 'active' || state.inviting || !canShareInvite()) return;
+    state.inviting = true;
+    render();
+    try {
+      // Keep this call in the click handler: Web Share requires a user gesture.
+      await navigator.share({ url: inviteUrl() });
+    } catch (error) {
+      if (error?.name !== 'AbortError' && state.phase === 'active') toast(t('share.inviteShareFailed'));
+    } finally {
+      state.inviting = false;
+      // Once ended, this view may already be unmounted (or mounted again).
+      if (state.phase !== 'ended') render();
+    }
   }
 
   // ------------------------------------------------------------ scanning
@@ -278,6 +320,12 @@ export function mountShare(root) {
     setText(el.code, state.phase === 'active' && state.code ? state.code : '-----');
     connectionChip(el.conn, state.conn, state.line);
     setText(el.receivers, t('share.receivers', { n: state.receivers }));
+    el.invite.hidden = !(state.phase === 'active' && state.code);
+    if (!el.invite.hidden) {
+      el.inviteCopy.title = inviteUrl();
+      el.inviteShare.hidden = !canShareInvite();
+      el.inviteShare.disabled = state.inviting;
+    }
 
     // Camera overlay
     const error = state.camera === 'error' ? state.cameraError : null;
@@ -358,6 +406,8 @@ export function mountShare(root) {
   };
   el.end.addEventListener('click', onEnd);
   el.copy.addEventListener('click', onCopy);
+  el.inviteCopy.addEventListener('click', copyInvite);
+  el.inviteShare.addEventListener('click', shareInvite);
   el.markers.addEventListener('click', onChoose);
   el.choices.addEventListener('click', onChoose);
   el.cameraRetry.addEventListener('click', onRetry);
@@ -380,6 +430,8 @@ export function mountShare(root) {
       clearInterval(ticker);
       el.end.removeEventListener('click', onEnd);
       el.copy.removeEventListener('click', onCopy);
+      el.inviteCopy.removeEventListener('click', copyInvite);
+      el.inviteShare.removeEventListener('click', shareInvite);
       launch.unmount();
       el.markers.removeEventListener('click', onChoose);
       el.choices.removeEventListener('click', onChoose);

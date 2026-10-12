@@ -99,7 +99,7 @@ describe('QRipple server', () => {
   }
 
   test('serves the app with security headers', async () => {
-    for (const path of ['/', '/share', '/join']) {
+    for (const path of ['/', '/share', '/join', '/24914']) {
       const res = await fetch(base + path);
       assert.equal(res.status, 200);
       assert.match(res.headers.get('content-type'), /text\/html/);
@@ -121,6 +121,8 @@ describe('QRipple server', () => {
     assert.equal((await fetch(`${base}/../package.json`)).status, 404);
     assert.equal((await fetch(`${base}/%2e%2e/package.json`)).status, 404);
     assert.equal((await fetch(`${base}/nope.js`)).status, 404);
+    assert.equal((await fetch(`${base}/1234`)).status, 404);
+    assert.equal((await fetch(`${base}/123456`)).status, 404);
   });
 
   test('create returns a five-digit code and a sharer token', async () => {

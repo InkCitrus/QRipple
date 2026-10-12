@@ -32,6 +32,10 @@ const messages = {
 
     'share.codeLabel': '配对码',
     'share.receivers': '{n} 位接收者',
+    'share.inviteCopy': '复制邀请链接',
+    'share.inviteShare': '分享邀请链接',
+    'share.inviteCopied': '已复制邀请链接，接收者打开即可加入',
+    'share.inviteShareFailed': '分享失败，请改用“复制邀请链接”。',
     'share.currentLabel': '当前分享内容',
     'share.noContent': '尚未识别到二维码，请将二维码放入取景框。',
     'share.synced': '已同步 · {time}',
@@ -141,6 +145,10 @@ const messages = {
 
     'share.codeLabel': 'Pairing code',
     'share.receivers': ({ n }) => (Number(n) === 1 ? '1 receiver' : `${n} receivers`),
+    'share.inviteCopy': 'Copy invite',
+    'share.inviteShare': 'Share invite',
+    'share.inviteCopied': 'Invite link copied. Receivers join by opening it',
+    'share.inviteShareFailed': 'Sharing failed. Use “Copy invite” instead.',
     'share.currentLabel': 'Currently sharing',
     'share.noContent': 'No QR code yet. Hold one inside the frame.',
     'share.synced': 'Synced · {time}',
