@@ -10,7 +10,7 @@ import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, mo
 const CODE_RE = /^\d{5}$/;
 const JOIN_ERRORS = new Set(['not_found', 'full', 'rate_limited', 'network']);
 
-export function mountJoin(root, { navigate }) {
+export function mountJoin(root, { navigate, code: inviteCode }) {
   const el = {
     form: $('#join-form', root),
     input: $('#join-code', root),
@@ -253,10 +253,16 @@ export function mountJoin(root, { navigate }) {
   el.leave.addEventListener('click', onLeave);
   window.addEventListener('langchange', onLang);
 
-  el.input.value = '';
-  render();
-  // Focus the code field on larger screens; on phones the keyboard would cover the page.
-  if (window.matchMedia('(hover: hover)').matches) el.input.focus();
+  if (inviteCode) {
+    // Opened from an invite link: join right away, keeping the code visible.
+    el.input.value = inviteCode;
+    join(inviteCode);
+  } else {
+    el.input.value = '';
+    render();
+    // Focus the code field on larger screens; on phones the keyboard would cover the page.
+    if (window.matchMedia('(hover: hover)').matches) el.input.focus();
+  }
 
   return {
     canLeave: () => true,

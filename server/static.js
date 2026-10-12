@@ -26,6 +26,8 @@ const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.svg', '.json', '
 
 // Client-side routes that all render the single-page app.
 const APP_ROUTES = new Set(['/', '/share', '/join']);
+// Invite links (/24914) open the join view for that pairing code.
+const INVITE_ROUTE = /^\/\d{5}$/;
 
 function vendorFiles() {
   // qrcode-generator only exports its CommonJS entry to require(); the ES
@@ -101,7 +103,7 @@ export function createStaticHandler(publicDir, { connectSrc = [], lines = [] } =
   }
 
   function resolve(pathname) {
-    if (APP_ROUTES.has(pathname)) return path.join(root, 'index.html');
+    if (APP_ROUTES.has(pathname) || INVITE_ROUTE.test(pathname)) return path.join(root, 'index.html');
     if (vendor.has(pathname)) return vendor.get(pathname);
     const file = path.resolve(root, '.' + pathname);
     if (file !== root && !file.startsWith(root + path.sep)) return null;
