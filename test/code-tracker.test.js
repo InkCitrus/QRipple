@@ -2,16 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CodeTracker } from '../public/js/code-tracker.js';
 
-const code = (key, x = 0.5, y = 0.5) => ({
+const code = (key, x = 0.5, y = 0.5, radius = 0.1) => ({
   key,
   text: key,
   bytes: new Uint8Array([1]),
   center: [x, y],
   quad: [
-    [x - 0.1, y - 0.1],
-    [x + 0.1, y - 0.1],
-    [x + 0.1, y + 0.1],
-    [x - 0.1, y + 0.1],
+    [x - radius, y - radius],
+    [x + radius, y - radius],
+    [x + radius, y + radius],
+    [x - radius, y + radius],
   ],
 });
 
@@ -106,4 +106,78 @@ test('codes that appear together are numbered in on-screen reading order, then k
   // Moving the camera does not renumber codes already in view.
   t.update([code('R', 0.2, 0.5), code('L', 0.8, 0.5), code('TOP', 0.6, 0.1)], 60);
   assert.deepEqual(t.visible.map((c) => c.key), ['TOP', 'L', 'R']);
+});
+
+test('a confirmed refresh removes the cached old code from choices', () => {
+  const t = new CodeTracker();
+  t.update([code('old')], 0);
+  assert.equal(t.update([code('new')], 60), null);
+  assert.equal(t.current.key, 'old', 'one read cannot replace the shared code');
+  assert.equal(t.update([code('new')], 120)?.key, 'new');
+  assert.deepEqual(t.visible.map((c) => c.key), ['new']);
+  assert.ok(!t.needsChoice);
+});
+
+test('new content at the same spot wins after confirmation even while the decoder still returns the old code', () => {
+  for (const reverse of [false, true]) {
+    const t = new CodeTracker({ confirmReads: 3 });
+    t.update([code('old')], 0);
+    const frame = () => {
+      const codes = [code('old'), code('new', 0.505)];
+      return reverse ? codes.reverse() : codes;
+    };
+    assert.equal(t.update(frame(), 60), null);
+    assert.equal(t.update(frame(), 120), null);
+    assert.equal(t.update(frame(), 180)?.key, 'new');
+    assert.deepEqual(t.visible.map((c) => c.key), ['new']);
+  }
+});
+
+test('a stale old code cannot take over again while it keeps being detected', () => {
+  const t = new CodeTracker();
+  t.update([code('old')], 0);
+  t.update([code('old'), code('new')], 60);
+  assert.equal(t.update([code('old'), code('new')], 120)?.key, 'new');
+  for (let now = 180; now < 1500; now += 60) {
+    assert.equal(t.update([code('old')], now), null);
+    assert.equal(t.current.key, 'new');
+    assert.ok(!t.visible.some((c) => c.key === 'old'));
+  }
+  assert.equal(t.choose('old', 1500), null, 'a stale choice click cannot resurrect the old code');
+  // The same data may legitimately be shown again after it leaves the camera.
+  t.update([], 2300);
+  assert.equal(t.update([code('old')], 2360), null);
+  assert.equal(t.update([code('old')], 2420)?.key, 'old');
+});
+
+test('a newly visible small neighbour is not mistaken for a refresh', () => {
+  const t = new CodeTracker();
+  t.update([code('chosen', 0.45, 0.5, 0.02)], 0);
+  for (const now of [60, 120, 180]) {
+    assert.equal(t.update([code('chosen', 0.45, 0.5, 0.02), code('neighbour', 0.52, 0.5, 0.02)], now), null);
+  }
+  assert.equal(t.current.key, 'chosen');
+  assert.deepEqual(t.visible.map((c) => c.key), ['chosen', 'neighbour']);
+  assert.equal(t.choose('neighbour', 200)?.key, 'neighbour');
+});
+
+test('multiple codes first seen together have no known newest value and still require a choice', () => {
+  const t = new CodeTracker();
+  for (const now of [0, 60, 120]) assert.equal(t.update([code('A'), code('B')], now), null);
+  assert.ok(t.needsChoice);
+  assert.equal(t.choose('A', 130)?.key, 'A');
+  assert.equal(t.update([code('A'), code('B')], 180), null);
+  assert.equal(t.current.key, 'A');
+});
+
+test('successive refreshes follow the latest confirmed code and preserve unrelated choices', () => {
+  const t = new CodeTracker();
+  t.update([code('A', 0.3)], 0);
+  t.update([code('A', 0.3), code('other', 0.8)], 60);
+  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('other', 0.8)], 120), null);
+  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('other', 0.8)], 180)?.key, 'B');
+  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('C', 0.3), code('other', 0.8)], 240), null);
+  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('C', 0.3), code('other', 0.8)], 300)?.key, 'C');
+  assert.deepEqual(t.visible.map((c) => c.key), ['other', 'C']);
+  assert.ok(!t.needsChoice);
 });

@@ -19,8 +19,8 @@ QRipple is a website for sharing a QR code live, with no install and no sign-up.
 ## Features
 
 - **On-device decoding**: ZXing (WebAssembly) in a Web Worker in the sharer's browser, up to about 16 frames per second. Blurry frames get a sharpened second try; browsers without WebAssembly fall back to jsQR.
-- **Changing QR codes**: new content is pushed to every receiver automatically, so codes that refresh every few seconds work. A new reading must be seen twice in a row before it replaces the old one, so a misread can't cause flicker.
-- **Several QR codes**: when more than one code is in view, they are numbered on the preview for the sharer to pick, and the chosen code is followed from then on. Small codes next to a large one are found too.
+- **Changing QR codes**: new content is pushed to every receiver after it is read twice. If old and new content briefly appear at the same spot, the later content is followed and superseded values are hidden to avoid switching back and forth.
+- **Several QR codes**: separate codes are numbered on the preview for the sharer to pick, and the chosen code is followed from then on. Codes first seen together still require a choice because their refresh order is unknown. Small codes next to a large one are found too.
 - **Auto zoom**: a code the camera can see but not read is zoomed in on automatically (where the camera supports zoom).
 - **Receivers**: the QR code is regenerated from the raw bytes as SVG; web links in the content can be clicked; the content can be copied, or a link passed to another app through the system share sheet, or, on Apple devices, handed to a Shortcuts shortcut instead (see below). The screen stays on during a session.
 - **Recovery**: a sharer who reloads the page returns to the same session; receivers reconnect automatically.
