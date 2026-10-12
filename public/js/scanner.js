@@ -285,7 +285,14 @@ export class Scanner {
     const place = (quad) => ({ quad, center: [(quad[0][0] + quad[2][0]) / 2, (quad[0][1] + quad[2][1]) / 2] });
     const codes = data.codes.map((code) => ({ text: code.text, bytes: code.bytes, ...place(code.quad.map(toView)) }));
     const failed = (data.failed || []).map((f) => place(f.quad.map(toView)));
-    const level = this.autoZoom.update({ codes, failed }, performance.now());
+    const [start, end] = [toView([0, 0]), toView([crop.w * scale, crop.h * scale])];
+    const scanBounds = [
+      clamp(Math.min(start[0], end[0]), 0, 1),
+      clamp(Math.min(start[1], end[1]), 0, 1),
+      clamp(Math.max(start[0], end[0]), 0, 1),
+      clamp(Math.max(start[1], end[1]), 0, 1),
+    ];
+    const level = this.autoZoom.update({ codes, failed, scanBounds }, performance.now());
     if (level !== null && this.zoomSupported) this.#applyZoom(level);
     this.onResult?.(codes, {
       zoom: this.autoZoom.zoom,

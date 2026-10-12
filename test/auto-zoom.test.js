@@ -22,17 +22,20 @@ test('a code that keeps failing to read near the center triggers one zoom step',
   assert.equal(z.update({ failed: [box(0.53, 0.47, 0.07)] }, 300), null);
 });
 
-test('zoom steps up while failures persist, capped at max', () => {
+test('zoom steps up while failures persist, capped at max, then recovers', () => {
   const z = new AutoZoom({ max: 2 });
   let t = 0;
   const levels = [];
+  let askedToMoveCloser = false;
   for (let i = 0; i < 40; i++) {
     t += 100;
     const level = z.update({ failed: [box(0.5, 0.5, 0.04)] }, t);
     if (level) levels.push(level);
+    askedToMoveCloser ||= z.wantsCloser;
   }
-  assert.deepEqual(levels, [1.4, 2]);
-  assert.ok(z.wantsCloser, 'at max zoom it asks the user to move closer');
+  assert.deepEqual(levels, [1.4, 2, 1]);
+  assert.ok(askedToMoveCloser, 'at max zoom it asks the user to move closer');
+  assert.ok(!z.wantsCloser, 'the hint clears when recovering the wider view');
 });
 
 test('does not zoom in if another code would leave the frame', () => {
@@ -77,4 +80,70 @@ test('asks the user to move closer only when nothing could be read', () => {
   assert.ok(z.wantsCloser);
   z.update({ codes: [box(0.3, 0.3, 0.1)], failed: [box(0.5, 0.5, 0.04)] }, 300);
   assert.ok(!z.wantsCloser, 'another code is readable: no nagging');
+});
+
+test('persistent failed detections at 3x recover to minimum and cannot immediately zoom back in', () => {
+  const z = new AutoZoom({ unreadableResetMs: 1000, recoveryPauseMs: 1500, settleMs: 0 });
+  z.zoom = 3;
+  const failed = [box(0.5, 0.5, 0.04)];
+  for (let now = 0; now < 1000; now += 100) assert.equal(z.update({ failed }, now), null);
+  assert.equal(z.update({ failed }, 1000), 1);
+  assert.ok(!z.wantsCloser);
+  for (let now = 1100; now < 2500; now += 100) {
+    assert.equal(z.update({ failed }, now), null);
+    assert.equal(z.zoom, 1);
+  }
+  assert.equal(z.update({ failed }, 2500), 1.4, 'auto zoom can retry after the recovery pause');
+});
+
+test('successful reads interrupt the unreadable timeout instead of undoing useful zoom', () => {
+  const z = new AutoZoom({ unreadableResetMs: 1000, settleMs: 0 });
+  z.zoom = 3;
+  for (const now of [0, 100, 200]) z.update({ failed: [box(0.5, 0.5, 0.04)] }, now);
+  assert.equal(z.update({ codes: [box(0.5, 0.5, 0.1)] }, 900), null);
+  assert.equal(z.update({ failed: [box(0.5, 0.5, 0.04)] }, 1000), null);
+  assert.equal(z.update({ failed: [box(0.5, 0.5, 0.04)] }, 1900), null);
+  assert.equal(z.update({ failed: [box(0.5, 0.5, 0.04)] }, 2000), 1);
+});
+
+test('a readable neighbour cannot keep a persistently unreadable target zoomed forever', () => {
+  const z = new AutoZoom({ unreadableResetMs: 1000, settleMs: 0 });
+  z.zoom = 3;
+  const frame = { codes: [box(0.4, 0.5, 0.05)], failed: [box(0.6, 0.5, 0.025)] };
+  for (let now = 0; now < 1200; now += 100) assert.equal(z.update(frame, now), null);
+  assert.equal(z.update(frame, 1200), 1);
+});
+
+test('useful zoom is retained while all codes remain readable and fit', () => {
+  const z = new AutoZoom();
+  z.zoom = 3;
+  for (let now = 0; now <= 10000; now += 100) {
+    assert.equal(z.update({ codes: [box(0.5, 0.5, 0.1)] }, now), null);
+  }
+  assert.equal(z.zoom, 3);
+});
+
+test('a tall code triggers zoom out even when its width fits', () => {
+  const z = new AutoZoom();
+  z.zoom = 3;
+  const tall = { center: [0.5, 0.5], quad: [[0.4, 0.05], [0.6, 0.05], [0.6, 0.95], [0.4, 0.95]] };
+  assert.equal(z.update({ failed: [tall] }, 0), 3 / 1.4);
+});
+
+test('zoom out uses the actual scan crop rather than the full preview', () => {
+  const z = new AutoZoom();
+  z.zoom = 3;
+  assert.equal(z.update({ codes: [box(0.5, 0.5, 0.37)], scanBounds: [0.15, 0.15, 0.85, 0.85] }, 0), 3 / 1.4);
+});
+
+test('zoom in must keep all corners inside the scan crop', () => {
+  const z = new AutoZoom();
+  for (let now = 0; now <= 200; now += 100) {
+    assert.equal(z.update({ failed: [box(0.69, 0.5, 0.02)], scanBounds: [0.25, 0.25, 0.75, 0.75] }, now), null);
+  }
+});
+
+test('zoom in cannot immediately produce a code larger than the zoom-out threshold', () => {
+  const z = new AutoZoom();
+  for (let now = 0; now <= 200; now += 100) assert.equal(z.update({ failed: [box(0.5, 0.5, 0.31)] }, now), null);
 });
