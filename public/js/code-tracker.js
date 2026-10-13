@@ -3,11 +3,10 @@
 //
 // - One code in view: it is shared automatically.
 // - Several separate codes in view: the user picks one to follow.
-// - New content at the followed code's spot wins after confirmation, even
+// - New content at the followed code's spot wins on its first read, even
 //   when the decoder or visibility cache still contains its old content.
-// - The first code is shared on its first read. Replacing what is shared needs
-//   `confirmReads` reads of the new value without a conflicting read in
-//   between, so a stray misread cannot make receivers flicker.
+// - Decoded changes are shared immediately by default. Callers can opt into
+//   multiple reads via `confirmReads` if they prefer confirmation over latency.
 
 const ROW_TOLERANCE = 0.15; // centers closer than this vertically count as one row
 const REFRESH_OVERLAP = 0.6; // bounding-box intersection / union for a refresh
@@ -19,7 +18,7 @@ function bounds(quad) {
 }
 
 export class CodeTracker {
-  constructor({ confirmReads = 2, confirmWindowMs = 1000, seenMs = 700, sameSpot = 0.15 } = {}) {
+  constructor({ confirmReads = 1, confirmWindowMs = 1000, seenMs = 700, sameSpot = 0.15 } = {}) {
     this.confirmReads = confirmReads;
     this.confirmWindowMs = confirmWindowMs; // reads further apart than this don't add up
     this.seenMs = seenMs; // a code stays "in view" this long after its last read

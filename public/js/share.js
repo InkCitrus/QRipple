@@ -1,5 +1,5 @@
 // Share view: creates a session, keeps the camera scanning, and pushes each
-// newly confirmed QR payload to the server.
+// newly selected QR payload to the server immediately.
 
 import { t } from './i18n.js';
 import { Connection } from './connection.js';

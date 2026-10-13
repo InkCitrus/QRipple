@@ -22,8 +22,17 @@ test('a single code is shared on its first read', () => {
   assert.equal(t.current.key, 'A');
 });
 
-test('a changed code needs two reads, tolerating missed frames but not conflicting reads', () => {
+test('each changed code is shared on its first read without needing another frame', () => {
   const t = new CodeTracker();
+  for (const [i, key] of ['A', 'B', 'C', 'D'].entries()) {
+    assert.equal(t.update([code(key)], i * 60)?.key, key);
+    assert.equal(t.current.at, i * 60);
+    assert.equal(t.update([], i * 60 + 30), null);
+  }
+});
+
+test('optional confirmation tolerates missed frames but not conflicting reads', () => {
+  const t = new CodeTracker({ confirmReads: 2 });
   t.update([code('A')], 0);
   assert.equal(t.update([code('B')], 1000), null);
   assert.equal(t.update([], 1060), null); // missed frame
@@ -36,7 +45,7 @@ test('a changed code needs two reads, tolerating missed frames but not conflicti
 });
 
 test('reads too far apart do not confirm a change', () => {
-  const t = new CodeTracker({ confirmWindowMs: 500 });
+  const t = new CodeTracker({ confirmReads: 2, confirmWindowMs: 500 });
   t.update([code('A')], 0);
   t.update([code('B')], 1000);
   assert.equal(t.update([code('B')], 1600), null);
@@ -65,8 +74,8 @@ test('a followed code that refreshes in place is followed; its neighbour is not'
   t.choose('B', 10);
   t.update([code('A', 0.3), code('B', 0.7)], 60);
   // B refreshes to B2 at the same spot.
-  assert.equal(t.update([code('A', 0.3), code('B2', 0.71)], 120), null);
-  assert.equal(t.update([code('A', 0.3), code('B2', 0.71)], 180)?.key, 'B2');
+  assert.equal(t.update([code('A', 0.3), code('B2', 0.71)], 120)?.key, 'B2');
+  assert.equal(t.update([code('A', 0.3), code('B2', 0.71)], 180), null);
   assert.equal(t.selection.key, 'B2');
 });
 
@@ -108,14 +117,26 @@ test('codes that appear together are numbered in on-screen reading order, then k
   assert.deepEqual(t.visible.map((c) => c.key), ['TOP', 'L', 'R']);
 });
 
-test('a confirmed refresh removes the cached old code from choices', () => {
+test('the first read of a refresh immediately removes the cached old code from choices', () => {
   const t = new CodeTracker();
   t.update([code('old')], 0);
-  assert.equal(t.update([code('new')], 60), null);
-  assert.equal(t.current.key, 'old', 'one read cannot replace the shared code');
-  assert.equal(t.update([code('new')], 120)?.key, 'new');
+  assert.equal(t.update([code('new')], 60)?.key, 'new');
+  assert.equal(t.current.key, 'new');
+  assert.equal(t.update([code('new')], 120), null);
   assert.deepEqual(t.visible.map((c) => c.key), ['new']);
   assert.ok(!t.needsChoice);
+});
+
+test('the first frame containing old and new content shares the new value regardless of decoder order', () => {
+  for (const reverse of [false, true]) {
+    const t = new CodeTracker();
+    t.update([code('old')], 0);
+    const frame = [code('old'), code('new', 0.505)];
+    assert.equal(t.update(reverse ? frame.reverse() : frame, 60)?.key, 'new');
+    assert.deepEqual(t.visible.map((c) => c.key), ['new']);
+    assert.equal(t.update([code('old')], 120), null);
+    assert.equal(t.current.key, 'new');
+  }
 });
 
 test('new content at the same spot wins after confirmation even while the decoder still returns the old code', () => {
@@ -136,8 +157,8 @@ test('new content at the same spot wins after confirmation even while the decode
 test('a stale old code cannot take over again while it keeps being detected', () => {
   const t = new CodeTracker();
   t.update([code('old')], 0);
-  t.update([code('old'), code('new')], 60);
-  assert.equal(t.update([code('old'), code('new')], 120)?.key, 'new');
+  assert.equal(t.update([code('old'), code('new')], 60)?.key, 'new');
+  assert.equal(t.update([code('old'), code('new')], 120), null);
   for (let now = 180; now < 1500; now += 60) {
     assert.equal(t.update([code('old')], now), null);
     assert.equal(t.current.key, 'new');
@@ -146,8 +167,8 @@ test('a stale old code cannot take over again while it keeps being detected', ()
   assert.equal(t.choose('old', 1500), null, 'a stale choice click cannot resurrect the old code');
   // The same data may legitimately be shown again after it leaves the camera.
   t.update([], 2300);
-  assert.equal(t.update([code('old')], 2360), null);
-  assert.equal(t.update([code('old')], 2420)?.key, 'old');
+  assert.equal(t.update([code('old')], 2360)?.key, 'old');
+  assert.equal(t.update([code('old')], 2420), null);
 });
 
 test('a newly visible small neighbour is not mistaken for a refresh', () => {
@@ -170,14 +191,14 @@ test('multiple codes first seen together have no known newest value and still re
   assert.equal(t.current.key, 'A');
 });
 
-test('successive refreshes follow the latest confirmed code and preserve unrelated choices', () => {
+test('successive refreshes follow each new code immediately and preserve unrelated choices', () => {
   const t = new CodeTracker();
   t.update([code('A', 0.3)], 0);
   t.update([code('A', 0.3), code('other', 0.8)], 60);
-  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('other', 0.8)], 120), null);
-  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('other', 0.8)], 180)?.key, 'B');
-  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('C', 0.3), code('other', 0.8)], 240), null);
-  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('C', 0.3), code('other', 0.8)], 300)?.key, 'C');
+  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('other', 0.8)], 120)?.key, 'B');
+  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('other', 0.8)], 180), null);
+  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('C', 0.3), code('other', 0.8)], 240)?.key, 'C');
+  assert.equal(t.update([code('A', 0.3), code('B', 0.3), code('C', 0.3), code('other', 0.8)], 300), null);
   assert.deepEqual(t.visible.map((c) => c.key), ['other', 'C']);
   assert.ok(!t.needsChoice);
 });
