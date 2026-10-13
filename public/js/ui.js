@@ -4,6 +4,7 @@ import { getLang, t } from './i18n.js';
 import { linkSegments } from './linkify.js';
 import { payloadText } from './payload.js';
 import { firstLink, launchPlatform, shortcutUrl } from './launch.js';
+import { elapsedParts } from './payload-age.js';
 
 export function $(selector, root = document) {
   return root.querySelector(selector);
@@ -52,6 +53,13 @@ export function formatClock(timestamp) {
     minute: '2-digit',
     second: '2-digit',
   });
+}
+
+export function formatAge(ms) {
+  const parts = elapsedParts(ms);
+  const key = parts.h ? 'hours' : parts.m ? 'minutes' : 'seconds';
+  if (key !== 'seconds') parts.s = String(parts.s).padStart(2, '0');
+  return t(`common.age.${key}`, parts);
 }
 
 /** Connection status (and the access line in use) -> chip text and tone. */

@@ -66,6 +66,7 @@ describe('QRipple server', () => {
       {
         port: 0,
         host: '127.0.0.1',
+        createBurst: 30, // enough sessions for the full suite without waiting for refill
         joinFailBurst: 5,
         joinFailRefillMs: 60_000,
         sweepMs: 60_000, // sweeps are triggered by hand
@@ -168,6 +169,61 @@ describe('QRipple server', () => {
     h.close();
     r1.close();
     r2.close();
+  });
+
+  test('payload age survives late joins, duplicate updates and reconnects; a new QR restarts it', async () => {
+    const { h, created } = await host();
+    h.send({ t: 'update', text: 'old', data: b64('old') });
+    const first = await h.next('ack');
+    assert.equal(first.rev, 1);
+    assert.ok(first.ageMs < 1000);
+    app.hub.store.getById(created.sid).payload.at = now() - 12345;
+
+    const r = await receiver(created.code);
+    assert.ok((await r.next('joined')).payload.ageMs >= 12345);
+    r.send({ t: 'ping', id: 42 });
+    const pong = await r.next('pong');
+    assert.equal(pong.id, 42);
+    assert.equal(pong.timing.rev, 1);
+    assert.ok(pong.timing.ageMs >= 12345);
+    assert.deepEqual(Object.keys(pong.timing).sort(), ['ageMs', 'rev']);
+
+    h.close();
+    await h.closed;
+    const resumed = client(url);
+    await resumed.opened;
+    resumed.send({ t: 'resume', sid: created.sid, token: created.token });
+    await resumed.next('resumed');
+    resumed.send({ t: 'update', text: 'old', data: b64('old') });
+    const duplicate = await resumed.next('ack');
+    assert.equal(duplicate.rev, 1);
+    assert.ok(duplicate.ageMs >= 12345, 'resending the same QR cannot reset its age');
+
+    resumed.send({ t: 'update', text: 'new', data: b64('new') });
+    const changed = await resumed.next('ack');
+    assert.equal(changed.rev, 2);
+    assert.ok(changed.ageMs < 1000);
+    assert.equal((await r.next('payload')).payload.rev, 2);
+    resumed.close();
+    r.close();
+  });
+
+  test('unjoined and departed sockets cannot read session timing through ping', async () => {
+    const { h, created } = await host();
+    h.send({ t: 'update', text: 'private', data: b64('private') });
+    await h.next('ack');
+    const r = client(url);
+    await r.opened;
+    r.send({ t: 'ping', id: 1, sid: created.sid });
+    assert.deepEqual(await r.next('pong'), { t: 'pong', id: 1 });
+    r.send({ t: 'join', code: created.code });
+    await r.next('joined');
+    r.send({ t: 'leave' });
+    await r.next('left');
+    r.send({ t: 'ping' });
+    assert.deepEqual(await r.next('pong'), { t: 'pong' }, 'legacy pings remain supported');
+    r.close();
+    h.close();
   });
 
   test('only the sharer can update or end a session', async () => {

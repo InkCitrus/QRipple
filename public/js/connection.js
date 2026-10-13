@@ -11,7 +11,7 @@
 const BACKOFF_MS = [250, 1000, 2000, 4000, 8000, 15000];
 const HEDGE_MS = 600; // start the next line if the current one hasn't opened yet
 const ATTEMPT_TIMEOUT_MS = 8000; // give up on a round of attempts after this
-const PING_AFTER_MS = 10000; // send a ping when the connection has been quiet this long
+const PING_AFTER_MS = 10000; // also calibrate payload age while QR traffic is active
 const DEAD_AFTER_MS = 25000; // no traffic at all for this long: assume the socket is dead
 const PREFERRED_KEY = 'qripple.line';
 
@@ -68,10 +68,15 @@ function silence(ws) {
 }
 
 export class Connection {
-  constructor({ onOpen, onMessage, onStatus }) {
+  constructor({ onOpen, onMessage, onStatus, onTiming }) {
     this.onOpen = onOpen;
     this.onMessage = onMessage;
     this.onStatus = onStatus;
+    this.onTiming = onTiming;
+    this.latencyMs = 0;
+    this.pingId = 0;
+    this.pendingPing = null;
+    this.lastPing = -Infinity;
     this.ws = null;
     this.line = null; // the line the open socket uses ({ id, url })
     this.suspect = null; // id of a line that just failed; tried last next time
@@ -87,7 +92,7 @@ export class Connection {
     this.handleOffline = () => this.#setStatus('offline');
     this.handleVisible = () => {
       if (document.visibilityState !== 'visible') return;
-      if (this.open) this.send({ t: 'ping' });
+      if (this.open) this.#ping();
       else this.reconnectNow();
     };
     window.addEventListener('online', this.handleOnline);
@@ -218,6 +223,9 @@ export class Connection {
     this.attempts = 0;
     this.everOpened = true;
     this.lastTraffic = Date.now();
+    this.latencyMs = 0;
+    this.pendingPing = null;
+    this.lastPing = -Infinity;
     ws.onmessage = (event) => {
       this.lastTraffic = Date.now();
       let msg;
@@ -226,7 +234,16 @@ export class Connection {
       } catch {
         return;
       }
-      if (msg?.t === 'pong') return;
+      if (msg?.t === 'pong') {
+        if (this.pendingPing && msg.id === this.pendingPing.id) {
+          // Age is sampled at the server immediately before the response.
+          // Half the round trip estimates its transit time without comparing clocks.
+          this.latencyMs = Math.max(0, performance.now() - this.pendingPing.at) / 2;
+          this.pendingPing = null;
+          this.onTiming?.(msg.timing, this.latencyMs);
+        }
+        return;
+      }
       this.onMessage?.(msg);
     };
     ws.onclose = () => {
@@ -236,6 +253,16 @@ export class Connection {
     ws.onerror = () => {};
     this.#setStatus('online');
     this.onOpen?.();
+    this.#ping();
+  }
+
+  #ping() {
+    if (!this.open) return;
+    const at = performance.now();
+    const id = ++this.pingId;
+    this.pendingPing = { id, at };
+    this.lastPing = at;
+    this.send({ t: 'ping', id });
   }
 
   /** The open connection was lost: retry soon, trying the other lines first. */
@@ -274,8 +301,8 @@ export class Connection {
       const ws = this.ws;
       silence(ws);
       this.#dropped();
-    } else if (quiet > PING_AFTER_MS) {
-      this.send({ t: 'ping' });
+    } else if (performance.now() - this.lastPing >= PING_AFTER_MS) {
+      this.#ping();
     }
   }
 

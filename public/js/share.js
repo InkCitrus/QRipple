@@ -1,12 +1,13 @@
 // Share view: creates a session, keeps the camera scanning, and pushes each
-// newly confirmed QR payload to the server.
+// newly selected QR payload to the server immediately.
 
 import { t } from './i18n.js';
 import { Connection } from './connection.js';
 import { Scanner } from './scanner.js';
 import { CodeTracker } from './code-tracker.js';
+import { PayloadAge } from './payload-age.js';
 import { bytesToBase64, describe } from './payload.js';
-import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, copyText, mountLaunch, createWakeLock, storage, toast } from './ui.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, formatAge, copyPayload, copyText, mountLaunch, createWakeLock, storage, toast } from './ui.js';
 
 const STORAGE_KEY = 'qripple.share';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -68,6 +69,7 @@ export function mountShare(root) {
   };
 
   const wakeLock = createWakeLock();
+  const age = new PayloadAge();
   // Which code is shared when zero, one or several are in view (see code-tracker.js).
   const tracker = new CodeTracker();
   const launch = mountLaunch($('#share-content-card', root), () => tracker.current);
@@ -75,6 +77,10 @@ export function mountShare(root) {
   // ------------------------------------------------------------ connection
 
   const conn = new Connection({
+    onTiming(sample, transitMs) {
+      age.sync(sample, transitMs);
+      renderMeta();
+    },
     onOpen() {
       state.sentKey = null;
       state.ackedKey = null;
@@ -109,7 +115,8 @@ export function mountShare(root) {
           break;
         case 'ack':
           state.ackedKey = state.sentKey;
-          state.syncedAt = Date.now();
+          age.set(msg, conn.latencyMs);
+          state.syncedAt = Date.now() - age.elapsedMs;
           break;
         case 'ended':
           finish('ended', msg.reason);
@@ -348,12 +355,19 @@ export function mountShare(root) {
       const shown = describe(current.text, current.bytes);
       el.content.classList.remove('empty');
       setLinkedText(el.content, shown.binary ? `${t('common.binary', { n: current.bytes.length })}\n${shown.text}` : shown.text);
-      let meta;
-      if (state.ackedKey === current.key) meta = t('share.synced', { time: formatClock(state.syncedAt) });
-      else if (state.conn === 'online') meta = t('share.syncing');
-      else meta = t('share.pendingSync');
-      setText(el.meta, meta);
+      renderMeta();
     }
+  }
+
+  function renderMeta() {
+    const current = tracker.current;
+    if (state.phase === 'ended' || !current) return;
+    let meta;
+    if (state.ackedKey === current.key) {
+      meta = t('share.synced', { time: formatClock(state.syncedAt), age: formatAge(age.elapsedMs) });
+    } else if (state.conn === 'online') meta = t('share.syncing');
+    else meta = t('share.pendingSync');
+    setText(el.meta, meta);
   }
 
   function finish(kind, reason) {
@@ -386,6 +400,8 @@ export function mountShare(root) {
     if (state.phase === 'ended') return;
     renderScan();
   }, 500);
+  const ageTicker = setInterval(renderMeta, 250);
+  document.addEventListener('visibilitychange', renderMeta);
   const onEnd = () => {
     if (window.confirm(t('share.endConfirm'))) endSharing();
   };
@@ -428,6 +444,8 @@ export function mountShare(root) {
     unmount() {
       if (state.phase !== 'ended') endSharing();
       clearInterval(ticker);
+      clearInterval(ageTicker);
+      document.removeEventListener('visibilitychange', renderMeta);
       el.end.removeEventListener('click', onEnd);
       el.copy.removeEventListener('click', onCopy);
       el.inviteCopy.removeEventListener('click', copyInvite);

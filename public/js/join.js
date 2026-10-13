@@ -5,7 +5,8 @@ import { t } from './i18n.js';
 import { Connection } from './connection.js';
 import { base64ToBytes, describe } from './payload.js';
 import { renderQrSvg } from './qr-render.js';
-import { $, setText, setLinkedText, connectionChip, formatClock, copyPayload, mountLaunch, createWakeLock } from './ui.js';
+import { PayloadAge } from './payload-age.js';
+import { $, setText, setLinkedText, connectionChip, formatClock, formatAge, copyPayload, mountLaunch, createWakeLock } from './ui.js';
 
 const CODE_RE = /^\d{5}$/;
 const JOIN_ERRORS = new Set(['not_found', 'full', 'rate_limited', 'network']);
@@ -45,6 +46,7 @@ export function mountJoin(root, { navigate, code: inviteCode }) {
   };
 
   const wakeLock = createWakeLock();
+  const age = new PayloadAge();
   const launch = mountLaunch(el.contentCard, () => state.payload);
   let conn = null;
   let retryTimer = null;
@@ -73,6 +75,10 @@ export function mountJoin(root, { navigate, code: inviteCode }) {
         render();
       },
       onMessage: handleMessage,
+      onTiming(sample, transitMs) {
+        age.sync(sample, transitMs);
+        renderAge();
+      },
     }).start();
   }
 
@@ -148,13 +154,14 @@ export function mountJoin(root, { navigate, code: inviteCode }) {
 
   function showPayload(p) {
     const previous = state.payload;
+    age.set(p, conn?.latencyMs);
     // Same content: nothing to redraw (avoids needless flicker).
     if (previous && previous.data === p.data) {
       previous.rev = p.rev;
       return;
     }
     const bytes = base64ToBytes(p.data);
-    state.payload = { rev: p.rev, data: p.data, text: p.text, bytes, receivedAt: Date.now() - (p.ageMs || 0) };
+    state.payload = { rev: p.rev, data: p.data, text: p.text, bytes, receivedAt: Date.now() - age.elapsedMs };
     try {
       el.qrFrame.replaceChildren(renderQrSvg(bytes));
     } catch {
@@ -172,6 +179,13 @@ export function mountJoin(root, { navigate, code: inviteCode }) {
   }
 
   // ------------------------------------------------------------ rendering
+
+  function renderAge() {
+    if (state.phase !== 'session' || !state.payload) return;
+    setText(el.qrMeta, t('join.updatedAt', {
+      time: formatClock(state.payload.receivedAt), age: formatAge(age.elapsedMs),
+    }));
+  }
 
   function render() {
     const { phase } = state;
@@ -202,7 +216,7 @@ export function mountJoin(root, { navigate, code: inviteCode }) {
       if (p) {
         const shown = describe(p.text, p.bytes);
         setLinkedText(el.content, shown.binary ? `${t('common.binary', { n: p.bytes.length })}\n${shown.text}` : shown.text);
-        setText(el.qrMeta, t('join.updatedAt', { time: formatClock(p.receivedAt) }));
+        renderAge();
         launch.render();
       } else {
         setText(el.qrMeta, '');
@@ -247,6 +261,9 @@ export function mountJoin(root, { navigate, code: inviteCode }) {
   }
 
   const onLang = () => render();
+  // Recompute from elapsed time; missed callbacks never accumulate drift.
+  const ticker = setInterval(renderAge, 250);
+  document.addEventListener('visibilitychange', renderAge);
   el.form.addEventListener('submit', onSubmit);
   el.input.addEventListener('input', onInput);
   el.copy.addEventListener('click', onCopy);
@@ -267,6 +284,8 @@ export function mountJoin(root, { navigate, code: inviteCode }) {
   return {
     canLeave: () => true,
     unmount() {
+      clearInterval(ticker);
+      document.removeEventListener('visibilitychange', renderAge);
       leave();
       clearTimeout(retryTimer);
       el.form.removeEventListener('submit', onSubmit);
