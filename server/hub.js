@@ -75,7 +75,11 @@ export class Hub {
 
     switch (msg.t) {
       case 'ping':
-        return send(ws, { t: 'pong' });
+        return send(ws, {
+          t: 'pong',
+          ...(Number.isSafeInteger(msg.id) ? { id: msg.id } : {}),
+          ...(ws.session?.payload ? { timing: this.#payloadTiming(ws.session.payload) } : {}),
+        });
       case 'create':
         return this.#create(ws);
       case 'resume':
@@ -168,7 +172,7 @@ export class Hub {
     if (stored) {
       this.#broadcast(session, { t: 'payload', payload: this.#publicPayload(stored) });
     }
-    send(ws, { t: 'ack', rev: session.rev });
+    send(ws, { t: 'ack', ...this.#payloadTiming(session.payload) });
   }
 
   #validatePayload(msg) {
@@ -245,7 +249,11 @@ export class Hub {
   // ---------------------------------------------------------------- shared
 
   #publicPayload(p) {
-    return { rev: p.rev, text: p.text, data: p.data, ageMs: Math.max(0, this.now() - p.at) };
+    return { ...this.#payloadTiming(p), text: p.text, data: p.data };
+  }
+
+  #payloadTiming(p) {
+    return { rev: p.rev, ageMs: Math.max(0, this.now() - p.at) };
   }
 
   #sendReceiverCount(session) {
