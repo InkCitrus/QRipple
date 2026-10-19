@@ -63,8 +63,11 @@ test('timing probes estimate transit, ignore old replies, refresh on visibility,
   const count = ws.sent.length;
   document.dispatchEvent(new Event('visibilitychange'));
   assert.equal(ws.sent.length, count + 1);
+  ws.receive({ t: 'ping' });
+  assert.equal(ws.sent.length, count + 2, 'Workers heartbeat triggers a timing probe');
+  assert.equal(ws.sent.at(-1).t, 'ping');
   conn.stop();
   t.mock.timers.tick(20000);
   document.dispatchEvent(new Event('visibilitychange'));
-  assert.equal(ws.sent.length, count + 1, 'stop removes timers and visibility listener');
+  assert.equal(ws.sent.length, count + 2, 'stop removes timers and visibility listener');
 });

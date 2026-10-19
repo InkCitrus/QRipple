@@ -234,6 +234,12 @@ export class Connection {
       } catch {
         return;
       }
+      // Workers cannot send protocol-level ping frames. Answer their
+      // application heartbeat with the usual timing probe.
+      if (msg?.t === 'ping') {
+        this.#ping();
+        return;
+      }
       if (msg?.t === 'pong') {
         if (this.pendingPing && msg.id === this.pendingPing.id) {
           // Age is sampled at the server immediately before the response.

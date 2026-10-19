@@ -11,12 +11,21 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "build:worker": "node scripts/build-worker-assets.js",
+    "dev:worker": "wrangler dev",
+    "check:worker": "wrangler deploy --dry-run --outdir dist/worker",
+    "deploy:worker": "wrangler deploy",
+    "test:worker": "npm run check:worker && node --test \"test/worker/*.test.js\""
   },
   "dependencies": {
     "jsqr": "1.4.0",
     "qrcode-generator": "2.0.4",
     "ws": "8.22.0",
     "zxing-wasm": "3.1.4"
+  },
+  "devDependencies": {
+    "miniflare": "4.20260730.0",
+    "wrangler": "4.151.2"
   }
 }
