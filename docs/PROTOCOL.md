@@ -31,6 +31,7 @@ receiver, for one session at a time.
 | `ended` | `reason`: `ended` \| `expired` \| `host_left` | everyone; the server then closes the socket |
 | `error` | `code` | see below |
 | `pong` | `id?`, `timing?` | requesting socket; timing only for its bound session |
+| `ping` | | any connected client, on Workers; respond with the usual client `ping` |
 
 `payload` = `{ rev, text, data, ageMs }`. `rev` increases with each change;
 `ageMs` is how long ago the server received it.
@@ -39,6 +40,11 @@ receiver, for one session at a time.
 when no payload or session exists. `pong.id` echoes a valid `ping.id`.
 Unchanged updates retain the original payload age. A changed payload starts
 a new revision and age.
+
+The Node.js server uses WebSocket control-frame pings for liveness. The Workers
+runtime cannot send these frames, so it sends `{ "t": "ping" }` instead. Clients
+answer with their normal application `ping` (including an optional timing ID)
+and receive `pong` as usual.
 
 The browser anchors `ageMs` to `performance.now()` and adds half the measured
 ping round trip to estimate transit time, without comparing device clocks.

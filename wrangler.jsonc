@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "qripple",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-07-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "build": {
+    "command": "npm run build:worker"
+  },
+  "assets": {
+    "directory": "./dist/worker-assets",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "QRIPPLE_HUB", "class_name": "QRippleHub" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["QRippleHub"] }
+  ],
+  "observability": {
+    "enabled": false
+  }
+}

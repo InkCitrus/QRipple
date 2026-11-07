@@ -7,6 +7,9 @@ import { WebSocketServer } from 'ws';
 import { loadConfig } from './config.js';
 import { Hub } from './hub.js';
 import { createStaticHandler } from './static.js';
+import { originAllowed, parseLine } from './http-policy.js';
+
+export { parseLine } from './http-policy.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -20,31 +23,6 @@ export function clientIp(req, trustProxy) {
   // Each trusted proxy appends the address it saw, so the client is
   // `trustProxy` entries from the end. Anything further left is spoofable.
   return forwarded[forwarded.length - trustProxy] || forwarded[0] || direct;
-}
-
-function originAllowed(req, allowedOrigins) {
-  const origin = req.headers.origin;
-  if (!origin) return true; // non-browser client; nothing to protect against
-  if (allowedOrigins.includes(origin)) return true;
-  try {
-    return new URL(origin).host === req.headers.host;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * An access line from config: a hostname ("tk.example.com" -> wss://tk.example.com/ws)
- * or a full WebSocket URL (handy for local testing).
- */
-export function parseLine(entry) {
-  const url = new URL(entry.includes('://') ? entry : `wss://${entry}/ws`);
-  return {
-    id: url.hostname.split('.')[0],
-    url: url.href,
-    origin: `${url.protocol === 'ws:' ? 'http:' : 'https:'}//${url.host}`,
-    connectSrc: `${url.protocol}//${url.host}`,
-  };
 }
 
 function rejectUpgrade(socket, status, text) {
@@ -86,7 +64,7 @@ export function createApp(overrides = {}, { log = console.log } = {}) {
   function onUpgrade(req, socket, head) {
     const { pathname } = new URL(req.url, 'http://localhost');
     if (pathname !== '/ws') return rejectUpgrade(socket, 404, 'Not Found');
-    if (!originAllowed(req, allowedOrigins)) return rejectUpgrade(socket, 403, 'Forbidden');
+    if (!originAllowed(req.headers.origin, req.headers.host, allowedOrigins)) return rejectUpgrade(socket, 403, 'Forbidden');
     const ip = clientIp(req, config.trustProxy);
     const count = connectionsPerIp.get(ip) || 0;
     if (count >= config.maxConnectionsPerIp) return rejectUpgrade(socket, 429, 'Too Many Requests');

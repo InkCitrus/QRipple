@@ -8,7 +8,7 @@ Try it: <https://qripple.inkorange.com>
 
 QRipple is a website for sharing a QR code live, with no install and no sign-up. The sharer points their phone's camera at a QR code; receivers enter a 5-digit pairing code and see the same QR code on their own screens. When the code's content changes, every receiver updates at once.
 
-**Only the decoded data is sent; camera images never leave the sharer's device.** The server keeps no records, and a session is gone as soon as it ends.
+**Only the decoded data is sent; camera images never leave the sharer's device.** The server keeps no QR history and deletes the current content as soon as the session ends.
 
 ## How to use it
 
@@ -49,7 +49,7 @@ camera → Web Worker (ZXing) decode ──► temporary in-memory session ─�
 ```
 
 - **Sharer**: camera frames (1080p) are cropped to the viewfinder and decoded in a Web Worker ([zxing-wasm](https://github.com/Sec-ant/zxing-wasm), with [jsQR](https://github.com/cozmo/jsQR) as a fallback). The first code is sent as soon as it is read; unchanged content is not sent again; when nothing can be read, the last result stays and scanning never stops.
-- **Server**: a single Node.js process whose only runtime dependency is `ws`. Sessions live entirely in memory: nothing is written to disk and content is never logged.
+- **Server**: a single Node.js process using `ws`, or Cloudflare Workers with one shared Durable Object. Sessions live entirely in memory and content is never logged or persisted; Workers only persists pairing-code reservations.
 - **Receiver**: the raw bytes (sent as base64) are re-encoded with [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator), using the more compact numeric or alphanumeric modes where possible. The code may look different from the original, but it carries the same data.
 
 See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the full message reference.
@@ -89,9 +89,33 @@ The front end is plain ES modules with no build step; reload the page to see cha
 
 ## Deployment
 
-The recommended way is to deploy to an Ubuntu server with the scripts in `deploy/`. They install a checksum-verified official Node.js build, Caddy (which gets the HTTPS certificate automatically) and a locked-down systemd service.
+### Cloudflare Workers
 
-### Requirements
+QRipple can run entirely on **Workers Static Assets + one shared Durable Object**, without a VPS, D1, KV or R2. All domains address the same object, preserving pairing codes, live updates and reconnection.
+
+Use Node.js 22 or later and a Cloudflare account supporting SQLite Durable Objects. Install all dependencies, including Wrangler:
+
+```bash
+npm ci
+npm run dev:worker       # Local Workers runtime at http://localhost:8787
+npm run test:worker      # Bundle check and Workers integration tests
+npx wrangler login      # Authenticate before the first deployment
+npm run deploy:worker   # Deploy and print the HTTPS URL
+```
+
+CI can authenticate with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. `wrangler.jsonc` includes the asset build, Durable Object binding and initial migration. `npm run check:worker` checks the bundle locally without publishing.
+
+- **Assets:** the build copies `public/` and the browser QR dependencies, including WASM, into `dist/worker-assets/`. No manual upload of `node_modules` is needed.
+- **Custom domain:** add it under the Worker's Settings → Domains & Routes in the Cloudflare dashboard; Cloudflare provides HTTPS.
+- **Configuration:** add configuration variables below as strings in `wrangler.jsonc` under `vars`; local overrides can go in an uncommitted `.dev.vars`. Workers does not use `HOST`, `PORT` or `TRUST_PROXY`; client IPs come from Cloudflare's `CF-Connecting-IP`. All `ACCESS_LINES` domains must route to the same Worker, rather than separate deployments.
+- **Privacy and restarts:** QR payloads, session IDs and sharer tokens stay exclusively in memory and are never written to Durable Object storage or content logs. Only pairing codes and reservation deadlines are persisted, then removed after expiry. Deployments and object restarts end active sessions; old codes remain reserved for at most one cooldown period after restart.
+- **Runtime and billing:** standard WebSockets keep session contents in memory; WebSocket Hibernation is intentionally disabled because it discards memory. Connections and the sharer's offline grace period consume Durable Object duration. Review [Cloudflare pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/) and your account limits for long-running connections. This deployment uses a single shared object for smaller installations; it does not shard by session.
+
+### Ubuntu server
+
+You can also deploy to an Ubuntu server with the scripts in `deploy/`. They install a checksum-verified official Node.js build, Caddy (which gets the HTTPS certificate automatically) and a locked-down systemd service.
+
+#### Requirements
 
 - An **Ubuntu 24.04** server (x86_64 or ARM64) you can reach over SSH as root or as a user that can sudo without a password.
 - A **domain** whose A record (and AAAA record, if the server has IPv6) points at the server.
@@ -100,7 +124,7 @@ The recommended way is to deploy to an Ubuntu server with the scripts in `deploy
 
 > Servers in mainland China can only serve websites on ports 80/443 for domains with an ICP filing.
 
-### Steps
+#### Steps
 
 Run these commands on your computer. Replace `myserver` with your SSH destination (such as `root@203.0.113.10`, or an alias from `~/.ssh/config`) and `qr.example.com` with your domain.
 
@@ -121,7 +145,7 @@ deploy/deploy.sh myserver
 
 Then open `https://qr.example.com`. To check from the command line, `curl https://qr.example.com/healthz` prints `ok`. The certificate is usually ready within a minute.
 
-### Maintenance
+#### Maintenance
 
 | Task | Command |
 | --- | --- |
@@ -260,6 +284,10 @@ server/
   ratelimit.js       token-bucket rate limiting
   static.js          static file server (in-memory cache + gzip) and security headers
   config.js          configuration from environment variables
+  http-policy.js     shared Origin checks and security headers
+worker/              Workers HTTP entry, Durable Object and WebSocket adapter
+scripts/             Workers static asset build
+wrangler.jsonc       Cloudflare deployment configuration and object migration
 public/              browser app (plain ES modules, no build step)
   js/app.js          client-side routing
   js/share.js        sharer page

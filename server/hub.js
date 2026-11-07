@@ -2,7 +2,7 @@
 // or a receiver. All messages are JSON objects with a `t` (type) field.
 // See docs/PROTOCOL.md for the full message reference.
 
-import { WebSocket } from 'ws';
+import { Buffer } from 'node:buffer';
 import { EndReason, SessionStore } from './sessions.js';
 import { KeyedLimiter, TokenBucket } from './ratelimit.js';
 
@@ -10,9 +10,10 @@ const CODE_RE = /^\d{5}$/;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_BUFFERED = 1024 * 1024; // drop receivers that stop reading
 const ROLELESS_IDLE_MS = 60 * 1000;
+const OPEN = 1;
 
 export class Hub {
-  constructor(config, { now = Date.now, log = () => {} } = {}) {
+  constructor(config, { now = Date.now, log = () => {}, scheduleTimers = true } = {}) {
     this.config = config;
     this.now = now;
     this.log = log;
@@ -20,10 +21,10 @@ export class Hub {
     this.createLimiter = new KeyedLimiter({ capacity: config.createBurst, refillMs: config.createRefillMs, now });
     this.joinFailLimiter = new KeyedLimiter({ capacity: config.joinFailBurst, refillMs: config.joinFailRefillMs, now });
     this.sockets = new Set();
-    this.timers = [
+    this.timers = scheduleTimers ? [
       setInterval(() => this.sweep(), config.sweepMs),
       setInterval(() => this.heartbeat(), config.heartbeatMs),
-    ];
+    ] : [];
     for (const timer of this.timers) timer.unref?.();
   }
 
@@ -263,7 +264,7 @@ export class Hub {
   #broadcast(session, msg) {
     const frame = JSON.stringify(msg);
     for (const ws of session.receivers) {
-      if (ws.readyState !== WebSocket.OPEN) continue;
+      if (ws.readyState !== OPEN) continue;
       if (ws.bufferedAmount > MAX_BUFFERED) {
         ws.terminate();
         continue;
@@ -282,7 +283,7 @@ export class Hub {
     for (const ws of sockets) {
       ws.role = null;
       ws.session = null;
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws.readyState === OPEN) {
         ws.send(frame);
         ws.close(1000, 'session ended');
       }
@@ -314,5 +315,5 @@ export class Hub {
 }
 
 function send(ws, msg) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  if (ws.readyState === OPEN) ws.send(JSON.stringify(msg));
 }

@@ -8,7 +8,7 @@
 
 QRipple 是一个无需安装、无需注册的实时二维码共享网站。分享者用手机摄像头对准一个二维码，接收者输入五位数字配对码，就能在自己的设备上实时看到同一个二维码；二维码内容一变，所有接收者都会同步更新。
 
-**只传输二维码解码后的数据，摄像头画面始终留在分享者设备上。** 服务器不保存任何记录，会话结束即消失。
+**只传输二维码解码后的数据，摄像头画面始终留在分享者设备上。** 服务器不保存二维码历史，当前内容在会话结束后立即删除。
 
 ## 使用方法
 
@@ -49,7 +49,7 @@ camera → Web Worker(ZXing) 解码 ──► 内存中的临时会话 ──Web
 ```
 
 - **分享端**：摄像头帧（1080p）裁剪到取景框后送入 Web Worker 解码（[zxing-wasm](https://github.com/Sec-ant/zxing-wasm)，兜底 [jsQR](https://github.com/cozmo/jsQR)）。首个二维码识别一次即推送；内容未变化不重复发送；识别不到时保留上一次结果，扫描不会停止。
-- **服务器**：单进程 Node.js，唯一的运行时依赖是 `ws`。会话完全存在内存中，不落盘、不记录内容。
+- **服务器**：单进程 Node.js（运行时依赖 `ws`），或 Cloudflare Workers + 一个共享的 Durable Object。会话完全存在内存中，不落盘、不记录内容；Workers 仅持久化配对码占用信息。
 - **接收端**：按原始字节（base64 传输）用 [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 重新编码；纯数字、字母数字内容自动使用更紧凑的编码模式。外观可能与原码不同，但承载的数据相同。
 
 完整的消息格式见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
@@ -89,9 +89,33 @@ npm test           # 单元测试与集成测试（node:test）
 
 ## 部署
 
-推荐的方式是用 `deploy/` 里的脚本部署到一台 Ubuntu 服务器：脚本会安装校验过的 Node.js 官方二进制、Caddy（自动申请 HTTPS 证书）和一个加固过的 systemd 服务。
+可以部署到 [Cloudflare Workers](#cloudflare-workers)，无需维护服务器；也可以用 `deploy/` 里的脚本部署到一台 Ubuntu 服务器，脚本会安装校验过的 Node.js 官方二进制、Caddy（自动申请 HTTPS 证书）和一个加固过的 systemd 服务。
 
-### 准备
+### Cloudflare Workers
+
+使用 **Workers Static Assets + 一个共享的 Durable Object**，不需要 VPS、D1、KV 或 R2。所有访问域名都连接同一个 Durable Object，五位配对码、实时同步和断线恢复沿用现有协议。
+
+需要 Node.js ≥ 22 和一个支持 SQLite Durable Objects 的 Cloudflare 账户。先安装全部依赖（包括 Wrangler）：
+
+```bash
+npm ci
+npm run dev:worker       # 本地 Workers 运行时，默认 http://localhost:8787
+npm run test:worker      # 打包检查和 Workers 集成测试
+npx wrangler login      # 首次发布前登录 Cloudflare
+npm run deploy:worker   # 发布，输出 HTTPS 访问地址
+```
+
+也可以在 CI 中设置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 发布。`wrangler.jsonc` 已包含静态资源构建、Durable Object 绑定和首次部署的迁移配置；`npm run check:worker` 只进行本地打包检查，不发布。
+
+- **静态资源**：发布前自动复制 `public/` 和浏览器需要的二维码依赖（含 WASM）到 `dist/worker-assets/`，不用手动上传 `node_modules`。
+- **自定义域名**：部署后在 Cloudflare 控制台的 Worker → Settings → Domains & Routes 中添加。HTTPS 由 Cloudflare 提供。
+- **配置**：将上文“会话规则”和下文“配置项”中的变量作为字符串添加到 `wrangler.jsonc` 的 `vars`，本地覆盖可写在不提交的 `.dev.vars` 中。`HOST`、`PORT`、`TRUST_PROXY` 不用于 Workers；客户端 IP 使用 Cloudflare 的 `CF-Connecting-IP`。多线路域名必须绑定到同一个 Worker，并配置 `ACCESS_LINES`，不能指向独立的部署。
+- **隐私与重启**：二维码内容、会话 ID 和分享令牌只存在内存中，不写入 Durable Object 存储，不记录内容。持久化的只有配对码和占用截止时间，以维持冷却期；过期后自动清除。重新部署或实例重启会结束进行中的会话，旧码从重启时起最多再保留一个冷却期。
+- **运行方式与费用**：为了维持内容只在内存中的承诺，使用标准 WebSocket，不启用会丢失内存的 WebSocket Hibernation。在线连接和离线宽限期内会产生 Durable Objects 运行时用量；请按 [Cloudflare 定价](https://developers.cloudflare.com/durable-objects/platform/pricing/) 和账户额度评估持续连接的费用。当前采用单个共享对象，适合小规模使用，不会按会话自动分片。
+
+### Ubuntu 服务器
+
+#### 准备
 
 - 一台 **Ubuntu 24.04** 服务器（x86_64 或 ARM64），能通过 SSH 登录，登录用户是 root 或能免密码 sudo。
 - 一个**域名**，A 记录（有 IPv6 的话还有 AAAA 记录）指向这台服务器。
@@ -100,7 +124,7 @@ npm test           # 单元测试与集成测试（node:test）
 
 > 中国大陆的服务器需要域名完成 ICP 备案，才能在 80/443 端口上提供网站。
 
-### 部署步骤
+#### 部署步骤
 
 以下命令都在本地电脑上执行。把 `myserver` 换成你的 SSH 地址（如 `root@203.0.113.10`，或 `~/.ssh/config` 中的别名），把 `qr.example.com` 换成你的域名。
 
@@ -121,7 +145,7 @@ deploy/deploy.sh myserver
 
 完成后打开 `https://qr.example.com` 即可使用。也可以用 `curl https://qr.example.com/healthz` 检查，正常时返回 `ok`。证书通常在一分钟内申请好。
 
-### 日常维护
+#### 日常维护
 
 | 操作 | 命令 |
 | --- | --- |
@@ -260,6 +284,10 @@ server/
   ratelimit.js       令牌桶限流
   static.js          静态文件服务（内存缓存 + gzip）与安全响应头
   config.js          环境变量配置
+  http-policy.js     两种部署共用的 Origin 校验与安全响应头
+worker/              Workers HTTP 入口、Durable Object 与 WebSocket 适配
+scripts/             Workers 静态资源构建
+wrangler.jsonc       Cloudflare 部署配置与 Durable Object 迁移
 public/              浏览器端（原生 ES 模块，无构建步骤）
   js/app.js          前端路由
   js/share.js        分享页

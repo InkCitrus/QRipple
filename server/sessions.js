@@ -2,6 +2,7 @@
 // as long as it is active, and only the latest decoded payload is kept.
 
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 
 const CODE_MIN = 10000; // five digits, no leading zero
 const CODE_MAX = 99999;

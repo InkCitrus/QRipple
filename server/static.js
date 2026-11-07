@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 import path from 'node:path';
+import { securityHeaders as headersForHost } from './http-policy.js';
 
 const require = createRequire(import.meta.url);
 
@@ -44,33 +45,7 @@ function vendorFiles() {
 }
 
 export function securityHeaders(req, connectSrc = []) {
-  const host = req.headers.host || '';
-  const sources = ["'self'"];
-  if (host) sources.push(`wss://${host}`, `ws://${host}`);
-  sources.push(...connectSrc); // other access lines
-  const connect = [...new Set(sources)].join(' ');
-  return {
-    'Content-Security-Policy': [
-      "default-src 'self'",
-      // 'wasm-unsafe-eval' lets the scanner compile the ZXing WebAssembly
-      // module; it does not allow JavaScript eval.
-      "script-src 'self' 'wasm-unsafe-eval'",
-      "style-src 'self'",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      `connect-src ${connect}`,
-      "worker-src 'self'",
-      "object-src 'none'",
-      "base-uri 'none'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-    ].join('; '),
-    'Permissions-Policy': 'camera=(self), microphone=(), geolocation=(), payment=()',
-    'Referrer-Policy': 'no-referrer',
-    'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
-    'Cross-Origin-Opener-Policy': 'same-origin',
-  };
+  return headersForHost(req.headers.host || '', connectSrc);
 }
 
 export function createStaticHandler(publicDir, { connectSrc = [], lines = [] } = {}) {
